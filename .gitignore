@@ -1,23 +1,11 @@
-# Engine internal directories (read-only, not user code)
-engine-docs/
-examples/
-templates/
-urhox-libs/
-schemas/
-lua-tools/
-.emmylua/
-.claude/
-prompts/
+# Ignore everything by default
+*
 
-# Build and temp
-dist/
-.build/
-.tmp/
-logs/
+# Only track these folders
+!/scripts/
+!/scripts/**
+!/assets/
+!/assets/**
 
-# Project config (auto-generated)
-.project/
-
-# OS files
-.DS_Store
-Thumbs.db
+# Track gitignore itself
+!.gitignore
