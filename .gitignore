@@ -1,0 +1,23 @@
+# Engine internal directories (read-only, not user code)
+engine-docs/
+examples/
+templates/
+urhox-libs/
+schemas/
+lua-tools/
+.emmylua/
+.claude/
+prompts/
+
+# Build and temp
+dist/
+.build/
+.tmp/
+logs/
+
+# Project config (auto-generated)
+.project/
+
+# OS files
+.DS_Store
+Thumbs.db
