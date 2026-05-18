@@ -1,11 +1,2 @@
-# Ignore everything by default
-*
-
-# Only track these folders
-!/scripts/
-!/scripts/**
-!/assets/
-!/assets/**
-
-# Track gitignore itself
-!.gitignore
+.build/
+dist/

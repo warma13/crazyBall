@@ -222,14 +222,12 @@ function M.DrawPegs(vg)
 
     -- 缓存激活的弹钉效果（避免每个钉每帧查询）
     local hasGold = Upgrades.GetEffectLevel("peg_gold") > 0
-    local hasMagnet = Upgrades.GetEffectLevel("peg_magnet") > 0
     local hasResonance = Upgrades.GetEffectLevel("peg_resonance") > 0
     local hasBonus = Upgrades.GetEffectLevel("peg_bonus") > 0
-    local hasSpark = Upgrades.GetEffectLevel("peg_spark") > 0
     local hasCharge = Upgrades.GetEffectLevel("peg_charge") > 0
     local hasMark = Upgrades.GetEffectLevel("peg_mark") > 0
-    local hasAnyEffect = hasGold or hasMagnet or hasResonance or hasBonus
-        or hasSpark or hasCharge or hasMark
+    local hasAnyEffect = hasGold or hasResonance or hasBonus
+        or hasCharge or hasMark
 
     -- 预计算脉冲值（所有钉共享）
     local pulse = 0.5 + 0.5 * math.sin(time * 3)
@@ -307,19 +305,6 @@ function M.DrawPegs(vg)
             nvgFill(vg)
         end
 
-        -- 磁场环（合批 stroke）
-        if hasMagnet then
-            local magnetR = pegR + S(2.5) * pulse2
-            nvgBeginPath(vg)
-            for _, peg in ipairs(gameState.pegs) do
-                nvgCircle(vg, peg.x, peg.y, magnetR)
-            end
-            nvgStrokeColor(vg, nvgRGBA(100, 180, 255, math.floor(30 + 25 * pulse2)))
-            nvgStrokeWidth(vg, S(0.8))
-            nvgStroke(vg)
-        end
-
-        -- 火花点（已移除）
     end
 
     -- ====== 钉子本体层（合批渲染，零分配） ======

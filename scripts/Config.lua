@@ -628,30 +628,6 @@ M.DRAW_EFFECTS = {
     },
     -- === 弹钉频率派（撞更多钉） ===
     {
-        id = "peg_magnet", name = "弹钉磁场",
-        color = { 100, 180, 255, 255 },
-        quality = "common",
-        valueFunc = gradualFormula(0.80, 0.95),
-        costFunc = costFormula(4, 1.8),
-        descFunc = function(lv, v) return string.format("弹钉碰撞半径 +%d%%", math.floor(v * 100)) end,
-    },
-    {
-        id = "peg_slow", name = "弹钉减速",
-        color = { 80, 200, 200, 255 },
-        quality = "common",
-        valueFunc = gradualFormula(0.50, 0.95),
-        costFunc = costFormula(4, 1.7),
-        descFunc = function(lv, v) return string.format("撞钉后球速 -%d%%", math.floor(v * 100)) end,
-    },
-    {
-        id = "peg_spark", name = "弹钉火花",
-        color = { 255, 180, 50, 255 },
-        quality = "rare",
-        valueFunc = gradualFormula(0.50, 0.95),
-        costFunc = costFormula(5, 1.9),
-        descFunc = function(lv, v) return string.format("%d%% 概率触发相邻钉", math.floor(v * 100)) end,
-    },
-    {
         id = "peg_launch", name = "弹钉弹射",
         color = { 200, 120, 255, 255 },
         quality = "common",

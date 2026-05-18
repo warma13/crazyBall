@@ -61,6 +61,9 @@ function M.Serialize()
         runeEssence = gameState.runeEssence or 0,
         runeLevels = M._CopyTable(gameState.runeLevels or {}),
 
+        -- 附魔系统（局内持久化，新游戏重置）
+        ballEnchantments = M._CopyEnchantments(gameState.ballEnchantments),
+
         -- 局内状态（支持中途保存恢复）
         roundTimeLeft = gameState.roundTimeLeft,
         roundEarned = BigNum.serialize(gameState.roundEarned),
@@ -152,6 +155,17 @@ function M.Deserialize(data)
     gameState.runeEssence = data.runeEssence or 0
     if data.runeLevels then
         gameState.runeLevels = M._CopyTable(data.runeLevels)
+    end
+
+    -- 附魔系统
+    if data.ballEnchantments then
+        gameState.ballEnchantments = {}
+        for k, v in pairs(data.ballEnchantments) do
+            local idx = tonumber(k) or k
+            if type(v) == "table" then
+                gameState.ballEnchantments[idx] = M._CopyTable(v)
+            end
+        end
     end
 
     -- 局内状态恢复
@@ -418,6 +432,18 @@ function M._CopyTable(t)
     local copy = {}
     for k, v in pairs(t) do
         copy[k] = v
+    end
+    return copy
+end
+
+--- 深拷贝附魔数据 { [ballIndex] = { [enchantId] = level } }
+function M._CopyEnchantments(enchants)
+    if type(enchants) ~= "table" then return {} end
+    local copy = {}
+    for k, v in pairs(enchants) do
+        if type(v) == "table" then
+            copy[k] = M._CopyTable(v)
+        end
     end
     return copy
 end
