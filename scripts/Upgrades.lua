@@ -64,10 +64,6 @@ function M.OnBallButtonClick(index)
     local coinsSpent = false
 
     if level == 0 then
-        local bt = Config.BALL_TYPES[index]
-        if bt.adOnly then
-            return  -- adOnly球只能通过广告解锁
-        end
         if gameState.coins >= cost then
             gameState.coins = gameState.coins - cost
             gameState.ballLevels[index] = 1

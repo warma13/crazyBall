@@ -105,6 +105,42 @@ M.gameState.unlockedSkins = {}    -- { ["ballIndex_skinId"] = true } 解锁记�
 M.gameState.runeEssence = 0       -- 符文精粹余额（普通 number）
 M.gameState.runeLevels = {}        -- { [runeId] = level }
 
+-- ============================================================================
+-- 放置模式（Idle Mode）持久化字段 — 不随 ResetToInitial 重置
+-- ============================================================================
+M.gameState.idleCoins = BigNum.new(0)         -- 放置模式金币（全局升级用）
+M.gameState.idleBallCoins = BigNum.new(0)     -- 放置模式球币（球能力升级用）
+M.gameState.idleTotalEarned = BigNum.new(0)   -- 放置模式累计金币收益
+M.gameState.idleTotalBallCoins = BigNum.new(0) -- 放置模式累计球币收益
+M.gameState.idleBallLevels = { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+M.gameState.idleSelectedBall = 1              -- 放置模式当前选中球
+M.gameState.idleSlots = {}                    -- 由 IdleMode 初始化
+M.gameState.idleDrawnEffects = {}             -- 放置模式已抽取效果
+M.gameState.idleDrawCount = 0                 -- 放置模式抽取次数
+M.gameState.idleDrawPity = 0                  -- 放置模式保底计数
+M.gameState.idlePrestigeCount = 0             -- 转生次数
+M.gameState.idlePrestigeMult = 1.0            -- 转生永久加成倍率
+
+-- 关卡系统（per-level 持久化数据）
+M.gameState.idleLevel = 1                     -- 当前所在关卡
+M.gameState.idleMaxUnlockedLevel = 1          -- 最高已解锁关卡
+M.gameState.idleBallsDropped = 0              -- 当前关卡已掉落球数（用于底袋自动升级）
+M.gameState.idleGlobalBallValueBonus = 0      -- 全局球价值加成（金币升级）
+M.gameState.idleGlobalSlotMultBonus = 0       -- 全局底袋倍率加成（金币升级）
+-- 全局升级系统（金币消费，永久生效，转生不重置）
+-- { drop_cooldown=0, base_value=0, crit_chance=0, crit_mult=0, slot_base=0 }
+M.gameState.idleUpgradeLevels = {}            -- { [upgradeId] = level }
+-- 弹珠能力升级（球币消费，永久生效，转生不重置）
+-- { ball_auto_drop=0, ball_base_value=0, ball_multiplier=0, ... }
+M.gameState.idleBallAbilityLevels = {}        -- { [abilityId] = level }
+-- 每关独立数据: { [level] = { slots={...}, ballsDropped=N, levelBallCoins=BigNum } }
+-- levelBallCoins = 本关累计获得的球币（用于判断解锁下一关）
+M.gameState.idleLevelData = {}
+
+-- 技能系统（三选一获取，转生保留）
+M.gameState.idleSkills = {}            -- { [skillId] = level }
+M.gameState.idleSkillPickCount = 0     -- 已完成技能选择次数（驱动阶段推进）
+
 -- 游戏阶段
 M.gameState.gamePhase = "menu"
 M.gameState.loading = false
@@ -127,6 +163,12 @@ M.gameState.boardRight = 0
 M.gameState.boardTop = 0
 M.gameState.boardBottom = 0
 M.gameState.slotWidth = 0
+
+-- 内容区域（撞钉和口袋的实际活动范围，board 向内缩进）
+M.gameState.contentLeft = 0
+M.gameState.contentRight = 0
+M.gameState.contentTop = 0
+M.gameState.contentBottom = 0
 
 -- NanoVG 上下文与字体
 M.vg = nil
@@ -199,6 +241,112 @@ function M.FlushEarnings()
     if M.gameState.roundPhase == "playing" then
         M.gameState.roundEarned = M.gameState.roundEarned + pending
     end
+end
+
+-- ============================================================================
+-- 放置模式收益累加器（同主模式 pattern）
+-- ============================================================================
+M._idlePendingGold = 0      -- 金币累加缓冲
+M._idlePendingBallCoin = 0  -- 球币累加缓冲
+
+--- 放置模式金币收益入账（累积到 idleCoins + idleTotalEarned）
+---@param amount number|table
+function M.AddIdleEarnings(amount)
+    if BigNum.is(amount) then
+        M.gameState.idleCoins = M.gameState.idleCoins + amount
+        M.gameState.idleTotalEarned = M.gameState.idleTotalEarned + amount
+        M.uiDirty = true
+        return
+    end
+    M._idlePendingGold = M._idlePendingGold + amount
+    M.uiDirty = true
+end
+
+--- 放置模式球币收益入账（同时累加到当关 levelBallCoins）
+---@param amount number|table
+function M.AddIdleBallCoins(amount)
+    if BigNum.is(amount) then
+        M.gameState.idleBallCoins = M.gameState.idleBallCoins + amount
+        M.gameState.idleTotalBallCoins = M.gameState.idleTotalBallCoins + amount
+        -- 累加到当关数据
+        local ld = M.gameState.idleLevelData[M.gameState.idleLevel]
+        if ld then
+            ld.levelBallCoins = ld.levelBallCoins + amount
+        end
+        M.uiDirty = true
+        return
+    end
+    M._idlePendingBallCoin = M._idlePendingBallCoin + amount
+    M.uiDirty = true
+end
+
+--- 将累积的放置模式收益一次性刷入 BigNum（每帧调一次）
+function M.FlushIdleEarnings()
+    -- 刷金币
+    local pendingGold = M._idlePendingGold
+    if pendingGold ~= 0 then
+        M._idlePendingGold = 0
+        M.gameState.idleCoins = M.gameState.idleCoins + pendingGold
+        M.gameState.idleTotalEarned = M.gameState.idleTotalEarned + pendingGold
+    end
+    -- 刷球币
+    local pendingBall = M._idlePendingBallCoin
+    if pendingBall ~= 0 then
+        M._idlePendingBallCoin = 0
+        M.gameState.idleBallCoins = M.gameState.idleBallCoins + pendingBall
+        M.gameState.idleTotalBallCoins = M.gameState.idleTotalBallCoins + pendingBall
+        -- 同步到当关数据
+        local ld = M.gameState.idleLevelData[M.gameState.idleLevel]
+        if ld then
+            ld.levelBallCoins = ld.levelBallCoins + pendingBall
+        end
+    end
+end
+
+--- 放置模式消费金币（检查余额）
+---@param cost table BigNum
+---@return boolean
+function M.SpendIdleCoins(cost)
+    if M.gameState.idleCoins < cost then return false end
+    M.gameState.idleCoins = M.gameState.idleCoins - cost
+    M.uiDirty = true
+    return true
+end
+
+--- 放置模式消费球币（检查余额）
+---@param cost table BigNum
+---@return boolean
+function M.SpendIdleBallCoins(cost)
+    if M.gameState.idleBallCoins < cost then return false end
+    M.gameState.idleBallCoins = M.gameState.idleBallCoins - cost
+    M.uiDirty = true
+    return true
+end
+
+--- 重置放置模式经济（转生时调用）
+function M.ResetIdleEconomy()
+    M.gameState.idleCoins = BigNum.new(0)
+    M.gameState.idleBallCoins = BigNum.new(0)
+    M.gameState.idleTotalEarned = BigNum.new(0)
+    M.gameState.idleTotalBallCoins = BigNum.new(0)
+    M.gameState.idleBallLevels = { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+    M.gameState.idleSelectedBall = 1
+    M.gameState.idleSlots = {}
+    M.gameState.idleDrawnEffects = {}
+    M.gameState.idleDrawCount = 0
+    M.gameState.idleDrawPity = 0
+    M.gameState.idleLevel = 1
+    M.gameState.idleMaxUnlockedLevel = 1
+    M.gameState.idleBallsDropped = 0
+    -- 注意: idleGlobalBallValueBonus / idleGlobalSlotMultBonus / idleUpgradeLevels
+    -- 是永久升级，转生不重置
+    -- 注意: idleSkills / idleSkillPickCount 是技能系统，转生不重置
+    M.gameState.idleBallAbilityLevels = {}   -- 弹珠能力重置（新阶段重新升级）
+    M.gameState.idleLevelData = {}
+    M._idlePendingGold = 0
+    M._idlePendingBallCoin = 0
+    M.uiDirty = true
+    print("[State] Idle economy reset (prestige)")
 end
 
 --- 获取当前宝石数量（解密读取）

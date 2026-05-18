@@ -10,6 +10,11 @@ local gameState = State.gameState
 
 local P = {}
 
+-- 卡片图片资源
+local IMG_CARD_NORMAL    = "image/ui_card_normal_20260517160219.png"
+local IMG_CARD_HIGHLIGHT = "image/ui_card_highlight_20260517160012.png"
+local CARD_SLICE = { top = 16, right = 16, bottom = 16, left = 16 }
+
 --- 创建符文升级列表
 ---@param cb table 回调表 { PlayClickSfx }
 ---@return table UI 面板
@@ -132,14 +137,16 @@ function P.CreateRuneCard(cb, rune)
         and { 255, 255, 255, 255 }
         or { 120, 110, 150, 160 }
 
+    local runeCardImg = IMG_CARD_HIGHLIGHT
+
     return UI.Panel {
         width = "100%",
         flexDirection = "row",
-        padding = { 8, 10, 8, 10 },
-        backgroundColor = bgColor,
-        borderColor = borderColor,
-        borderWidth = 1.5,
-        borderRadius = 10,
+        padding = { 10, 12, 10, 12 },
+        backgroundImage = runeCardImg,
+        backgroundFit = "sliced",
+        backgroundSlice = CARD_SLICE,
+        opacity = canAfford and 1.0 or 0.55,
         alignItems = "center",
         gap = 8,
         children = {
@@ -162,6 +169,7 @@ function P.CreateRuneCard(cb, rune)
             },
             -- 右侧：升级按钮
             UI.Panel {
+                flexShrink = 0,
                 flexDirection = "row",
                 padding = { 6, 4, 6, 4 },
                 borderRadius = 6,

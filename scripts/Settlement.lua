@@ -47,9 +47,14 @@ local function _acquirePopup()
         _popupPool[_popupPoolSize] = nil
         _popupPoolSize = _popupPoolSize - 1
         p.icon = nil  -- 清除残留字段，防止金币 popup 误显宝石图标
+        p.iconType = nil
+        p.skinKey = nil
+        p.vx = 0
+        p.vy = 0
+        p.elapsed = 0
         return p
     end
-    return { x = 0, y = 0, text = "", color = { 0, 0, 0, 255 }, timer = 0, fontSize = 14 }
+    return { x = 0, y = 0, text = "", color = { 0, 0, 0, 255 }, timer = 0, fontSize = 14, vx = 0, vy = 0, elapsed = 0 }
 end
 
 --- 回收飘字对象到池中（由 Physics.UpdatePopups 调用）
@@ -108,14 +113,27 @@ end
 function M.OnBallLanded(ball)
     -- ====== Step 1: 确定口袋 ======
     local slotCount = #gameState.slots
-    local relX = ball.x - gameState.boardLeft
-    local slotIndex = num_floor(relX / gameState.slotWidth) + 1
+    -- 按实际分隔线边界判定落入哪个口袋
+    local edges = gameState.slotEdges
+    local slotIndex = slotCount  -- 默认最后一个
+    if edges then
+        for i = 1, slotCount do
+            if ball.x < (edges[i + 1] or 1e9) then
+                slotIndex = i
+                break
+            end
+        end
+    else
+        local relX = ball.x - gameState.boardLeft
+        slotIndex = num_floor(relX / gameState.slotWidth) + 1
+    end
     slotIndex = num_max(1, num_min(slotIndex, slotCount))
 
     local slot = gameState.slots[slotIndex]
     local slotMult = Slots.GetSlotMult(slot)
     local slotColor = Slots.GetSlotColor(slot)
-    local centerX = gameState.boardLeft + (slotIndex - 0.5) * gameState.slotWidth
+    local centerX = gameState.slotCenters and gameState.slotCenters[slotIndex]
+        or (gameState.boardLeft + (slotIndex - 0.5) * gameState.slotWidth)
 
     local mult = slotMult
     -- 符文口袋加成（rune_slot: 全部口袋倍率+5%/级）
@@ -509,7 +527,7 @@ function M.OnBallLanded(ball)
             if quakeGold > 0 then
                 local quakeTotal = quakeGold * #gameState.pegs
                 State.AddEarnings(quakeTotal)
-                gameState.screenShake = num_max(gameState.screenShake or 0, 0.5)
+                gameState.screenShake = num_max(gameState.screenShake or 0, 0.25)
             end
         end
     end
@@ -531,9 +549,13 @@ function M.OnBallLanded(ball)
 
     local popup = _acquirePopup()
     popup.x = centerX
-    popup.y = gameState.boardBottom - CONFIG.SLOT_HEIGHT * (gameState.boardScale or 1)
+    popup.y = gameState.contentBottom - CONFIG.SLOT_HEIGHT * (gameState.boardScale or 1)
     popup.text = popupText
     popup.timer = CONFIG.POPUP_DURATION
+    popup.elapsed = 0
+    popup.iconType = "coin"
+    popup.vx = (math.random() > 0.5 and 1 or -1) * (30 + math.random() * 30)
+    popup.vy = -(80 + math.random() * 40)
     popup.fontSize = (isCrit or mult >= 10) and 20 or (mult >= 5 and 16 or 14)
     -- 复用 color 表，避免每次分配新表
     local pc = popup.color
@@ -545,7 +567,7 @@ function M.OnBallLanded(ball)
     table.insert(gameState.popups, popup)
 
     if mult >= 10 or isCrit then
-        gameState.screenShake = 0.3
+        gameState.screenShake = 0.15
     end
 end
 

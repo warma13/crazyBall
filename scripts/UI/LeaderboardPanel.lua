@@ -206,6 +206,7 @@ function P.CreateLeaderboardPanel(cb)
                         width = "100%",
                         flexGrow = 1,
                         flexShrink = 1,
+                        showScrollbar = false,
                         padding = { 4, 0, 4, 0 },
                         children = {
                             UI.Panel {

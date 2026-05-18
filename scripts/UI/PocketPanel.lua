@@ -11,6 +11,11 @@ local gameState = State.gameState
 
 local P = {}
 
+-- 卡片图片资源
+local IMG_CARD_NORMAL    = "image/ui_card_normal_20260517160219.png"
+local IMG_CARD_HIGHLIGHT = "image/ui_card_highlight_20260517160012.png"
+local CARD_SLICE = { top = 16, right = 16, bottom = 16, left = 16 }
+
 --- 创建口袋升级列表
 ---@param cb table 回调表
 ---@return table UI 面板
@@ -52,32 +57,6 @@ function P.CreatePocketItem(cb, index)
 
     -- 右侧按钮组
     local rightChildren = {}
-    if cb.ADS_ENABLED and not canAfford then
-        table.insert(rightChildren, UI.Panel {
-            flexDirection = "row",
-            padding = { 5, 3, 5, 3 },
-            borderRadius = 5,
-            alignItems = "center", gap = 3,
-            backgroundColor = { 200, 60, 40, 240 },
-            pointerEvents = "auto",
-            onClick = function(self)
-                cb.PlayClickSfx()
-                Slots.AdUpgradeSlot(index)
-            end,
-            children = {
-                UI.Panel {
-                    width = 20, height = 20,
-                    backgroundImage = "image/icon_ad.png",
-                    backgroundSize = "contain",
-                },
-                UI.Label {
-                    text = "广告",
-                    fontSize = 12,
-                    fontColor = { 255, 255, 255, 240 },
-                },
-            },
-        })
-    end
     table.insert(rightChildren, UI.Panel {
         padding = { 5, 3, 5, 3 },
         borderRadius = 5,
@@ -95,14 +74,17 @@ function P.CreatePocketItem(cb, index)
         }
     })
 
+    local cardImg = IMG_CARD_HIGHLIGHT
+
     return UI.Panel {
         id = "pocket_" .. index,
         width = "100%",
         flexDirection = "row",
-        padding = { 6, 6, 6, 8 },
-        backgroundColor = { 30, 35, 55, 200 },
-        borderColor = accentColor,
-        borderWidth = canAfford and 1.5 or 1, borderRadius = 8,
+        padding = { 8, 8, 8, 10 },
+        backgroundImage = cardImg,
+        backgroundFit = "sliced",
+        backgroundSlice = CARD_SLICE,
+        opacity = canAfford and 1.0 or 0.55,
         alignItems = "center", gap = 8,
         pointerEvents = "auto",
         onClick = function()
@@ -126,13 +108,14 @@ function P.CreatePocketItem(cb, index)
                 }
             },
             UI.Label {
-                flexGrow = 1,
+                flexGrow = 1, flexShrink = 1,
                 text = titleText,
                 fontSize = 15,
                 fontColor = { 200, 210, 230, 240 },
                 pointerEvents = "none",
             },
             UI.Panel {
+                flexShrink = 0,
                 flexDirection = "row",
                 alignItems = "center", gap = 4,
                 children = rightChildren,

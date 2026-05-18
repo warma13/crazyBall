@@ -128,7 +128,42 @@ function M.RecalcLayout()
     gameState.panelHeight = h - splitY
     gameState.screenW = w
     gameState.screenH = h
-    gameState.slotWidth = (gameState.boardRight - gameState.boardLeft) / #gameState.slots
+
+    -- 内容区域：board 向内缩进，撞钉和口袋在此范围内
+    local cmx = CONFIG.CONTENT_MARGIN_X * bs
+    local cmt = CONFIG.CONTENT_MARGIN_TOP * bs
+    local cmb = CONFIG.CONTENT_MARGIN_BOT * bs
+    gameState.contentLeft   = gameState.boardLeft + cmx
+    gameState.contentRight  = gameState.boardRight - cmx
+    gameState.contentTop    = gameState.boardTop + cmt
+    gameState.contentBottom = gameState.boardBottom - cmb
+
+    -- 口袋边界和中心（按图片分隔线比例计算）
+    local bL = gameState.boardLeft
+    local bW = gameState.boardRight - bL
+    local dividers = CONFIG.SLOT_DIVIDERS
+    local innerL = CONFIG.SLOT_INNER_LEFT
+    local innerR = CONFIG.SLOT_INNER_RIGHT
+    -- 边界数组: [innerLeft, div1, div2, ..., divN, innerRight]
+    local edges = { bL + innerL * bW }
+    for _, d in ipairs(dividers) do
+        edges[#edges + 1] = bL + d * bW
+    end
+    edges[#edges + 1] = bL + innerR * bW
+    gameState.slotEdges = edges
+    -- 中心和宽度数组
+    local centers = {}
+    local widths = {}
+    local slotCount = #gameState.slots
+    for i = 1, slotCount do
+        local l = edges[i] or edges[1]
+        local r = edges[i + 1] or edges[#edges]
+        centers[i] = (l + r) / 2
+        widths[i] = r - l
+    end
+    gameState.slotCenters = centers
+    gameState.slotWidths = widths
+    gameState.slotWidth = bW / slotCount  -- 仍保留均分宽度用于落球检测
 end
 
 --- 初始化钉子
@@ -149,26 +184,57 @@ function M.InitPegs()
     gameState.boardTop = CONFIG.BOARD_MARGIN_TOP * bs + 30 * bs
     gameState.boardBottom = splitY
 
-    local slotCount = #gameState.slots
-    local boardW = gameState.boardRight - gameState.boardLeft
-    local boardH = gameState.boardBottom - gameState.boardTop - CONFIG.SLOT_HEIGHT * bs
+    -- 内容区域
+    local cmx = CONFIG.CONTENT_MARGIN_X * bs
+    local cmt = CONFIG.CONTENT_MARGIN_TOP * bs
+    local cmb = CONFIG.CONTENT_MARGIN_BOT * bs
+    gameState.contentLeft   = gameState.boardLeft + cmx
+    gameState.contentRight  = gameState.boardRight - cmx
+    gameState.contentTop    = gameState.boardTop + cmt
+    gameState.contentBottom = gameState.boardBottom - cmb
 
-    gameState.slotWidth = boardW / slotCount
+    local slotCount = #gameState.slots
+    local contentW = gameState.contentRight - gameState.contentLeft
+    local contentH = gameState.contentBottom - gameState.contentTop - CONFIG.SLOT_HEIGHT * bs
+
+    -- 口袋边界和中心（按图片分隔线比例计算）
+    local bL = gameState.boardLeft
+    local bW = gameState.boardRight - bL
+    local dividers = CONFIG.SLOT_DIVIDERS
+    local innerL = CONFIG.SLOT_INNER_LEFT
+    local innerR = CONFIG.SLOT_INNER_RIGHT
+    local edges = { bL + innerL * bW }
+    for _, d in ipairs(dividers) do
+        edges[#edges + 1] = bL + d * bW
+    end
+    edges[#edges + 1] = bL + innerR * bW
+    gameState.slotEdges = edges
+    local centers = {}
+    local widths = {}
+    for i = 1, slotCount do
+        local l = edges[i] or edges[1]
+        local r = edges[i + 1] or edges[#edges]
+        centers[i] = (l + r) / 2
+        widths[i] = r - l
+    end
+    gameState.slotCenters = centers
+    gameState.slotWidths = widths
+    gameState.slotWidth = bW / slotCount
 
     gameState.pegs = {}
-    local rowSpacing = boardH / (CONFIG.PEG_ROWS + 1)
+    local rowSpacing = contentH / (CONFIG.PEG_ROWS + 1)
 
     for row = 1, CONFIG.PEG_ROWS do
-        local y = gameState.boardTop + row * rowSpacing
+        local y = gameState.contentTop + row * rowSpacing
         local isOddRow = (row % 2 == 1)
         local pegsInRow = isOddRow and _rawMax(slotCount - 1, 2) or _rawMax(slotCount, 3)
 
         for col = 1, pegsInRow do
             local x
             if isOddRow then
-                x = gameState.boardLeft + col * (boardW / (pegsInRow + 1))
+                x = gameState.contentLeft + col * (contentW / (pegsInRow + 1))
             else
-                x = gameState.boardLeft + (col - 0.5) * (boardW / pegsInRow)
+                x = gameState.contentLeft + (col - 0.5) * (contentW / pegsInRow)
             end
             table.insert(gameState.pegs, {
                 x = x, y = y,
@@ -211,7 +277,7 @@ function M.DropBall(dropX)
 
     table.insert(gameState.balls, {
         x = dropX,
-        y = gameState.boardTop - 5,
+        y = gameState.contentTop - 5,
         vx = (math.random() - 0.5) * 20 * (gameState.boardScale or 1),
         vy = 0,
         radius = ballRadius,
@@ -235,12 +301,12 @@ function M.DropSkyBall()
     local level = _rawMax(1, gameState.ballLevels[1])
     local value = BallEffects.GetBallValue(1, level)
 
-    local dropX = gameState.boardLeft + math.random() * (gameState.boardRight - gameState.boardLeft)
+    local dropX = gameState.contentLeft + math.random() * (gameState.contentRight - gameState.contentLeft)
 
     local bs = gameState.boardScale or 1
     table.insert(gameState.balls, {
         x = dropX,
-        y = gameState.boardTop - 5,
+        y = gameState.contentTop - 5,
         vx = (math.random() - 0.5) * 20 * bs,
         vy = 0,
         radius = CONFIG.BALL_RADIUS * bs,
@@ -272,14 +338,14 @@ function M.DropMultipleBalls(randomPos)
         multiCount = multiCount + 1
     end
 
-    local boardCenterX = (gameState.boardLeft + gameState.boardRight) / 2
-    local spread = (gameState.boardRight - gameState.boardLeft) * 0.3
+    local boardCenterX = (gameState.contentLeft + gameState.contentRight) / 2
+    local spread = (gameState.contentRight - gameState.contentLeft) * 0.3
 
     local dropped = 0
     for i = 1, multiCount do
         local dropX
         if randomPos then
-            dropX = gameState.boardLeft + 20 + math.random() * (gameState.boardRight - gameState.boardLeft - 40)
+            dropX = gameState.contentLeft + 20 + math.random() * (gameState.contentRight - gameState.contentLeft - 40)
         else
             local offset = 0
             if multiCount > 1 then
@@ -299,10 +365,10 @@ function M.UpdateBalls(dt)
     local pegR = PegEffects.GetPegCollisionRadius()
     local bs = gameState.boardScale or 1
     local nudge = CONFIG.RANDOM_NUDGE * bs
-    local bottomY = gameState.boardBottom - 5
-    local boardLeft = gameState.boardLeft
-    local boardRight = gameState.boardRight
-    local boardBottom = gameState.boardBottom
+    local bottomY = gameState.contentBottom - 5
+    local boardLeft = gameState.contentLeft
+    local boardRight = gameState.contentRight
+    local boardBottom = gameState.contentBottom
     local pegHitDuration = CONFIG.PEG_HIT_DURATION
     local maxBalls = CONFIG.MAX_BALLS
     local ballRadius = CONFIG.BALL_RADIUS
@@ -658,6 +724,7 @@ function M.UpdatePopups(dt)
     while j <= n do
         local p = popups[j]
         p.timer = p.timer - dt
+        p.elapsed = (p.elapsed or 0) + dt
         if p.timer <= 0 then
             popups[j] = popups[n]
             popups[n] = nil

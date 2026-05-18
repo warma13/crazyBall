@@ -27,6 +27,7 @@ local LeaderboardPanel = require("UI.LeaderboardPanel")
 local RunePanel = require("UI.RunePanel")
 local Runes = require("Runes")
 local Enchantment = require("Enchantment")
+local DebugPanel = require("UI.DebugPanel")
 
 local CONFIG = Config.CONFIG
 local gameState = State.gameState
@@ -38,6 +39,17 @@ local M = {}
 ---@diagnostic disable-next-line: undefined-global
 local sdk = sdk
 local ADS_ENABLED = true   -- 广告入口总开关
+
+-- UI 背景图路径（复用放置模式图片资源）
+local IMG = {
+    PANEL_BG   = "image/ui_panel_bg_v3_20260518184142.png",
+    BOTTOM_BAR = "image/ui_bottom_bar_20260517184541.png",
+    CARD_NORMAL    = "image/ui_card_normal_20260517160219.png",
+    CARD_HIGHLIGHT = "image/ui_card_highlight_20260517160012.png",
+}
+local PANEL_SLICE = { top = 30, right = 30, bottom = 30, left = 30 }
+local BAR_SLICE   = { top = 10, right = 20, bottom = 10, left = 20 }
+local CARD_SLICE  = { top = 16, right = 16, bottom = 16, left = 16 }
 
 -- 物理模块引用（由 main.lua 注入，解决循环依赖）
 M.Physics = nil
@@ -95,6 +107,7 @@ local cb = {
 --- 创建根 UI
 function M.CreateUI()
     local splitPct = math.floor(CONFIG.BOARD_SPLIT_RATIO * 100) .. "%"
+    local Renderer = require("Renderer")
     State.uiRoot_ = UI.SafeAreaView {
         id = "gameRoot",
         width = "100%",
@@ -109,9 +122,20 @@ function M.CreateUI()
                 pointerEvents = "none",
             },
             M.CreateUpgradePanel(),
-            M.CreateDropCircleButton(),
+            -- 左下角版本号（绝对定位，浮于 UI 最上层）
+            UI.Label {
+                position = "absolute",
+                bottom = 4, left = 4,
+                text = Renderer.GAME_VERSION,
+                fontSize = 9,
+                fontColor = { 180, 190, 210, 100 },
+                pointerEvents = "none",
+            },
+            -- 右上角 Debug 触发区域
+            DebugPanel.CreateDebugTrigger(),
         }
     }
+    DebugPanel.SetRoot(State.uiRoot_)
     UI.SetRoot(State.uiRoot_)
     M.SubscribeEvents()
 end
@@ -136,27 +160,38 @@ function M.CreateUpgradePanel()
         id = "upgradePanel",
         width = "100%",
         flexGrow = 1,
-        backgroundColor = { 18, 22, 40, 245 },
-        borderColor = { 70, 90, 140, 220 },
-        borderWidth = { 2, 0, 0, 0 },
         children = {
-            UI.ScrollView {
-                id = "tabContent",
+            -- 滚动区外容器：用面板背景图 + 内边距，让列表不超出边框
+            UI.Panel {
+                id = "scrollContainer",
                 width = "100%",
                 flexGrow = 1,
-                padding = { 10, 14, 6, 14 },
-                onScroll = function(self, sx, sy)
-                    if not pendingRestore then
-                        tabScrollY[gameState.activeTab] = sy
-                    end
-                end,
-                children = { M.CreateTabContent() },
+                backgroundImage = IMG.PANEL_BG,
+                backgroundFit = "sliced",
+                backgroundSlice = PANEL_SLICE,
+                padding = { 30, 30, 24, 30 },
+                overflow = "hidden",
+                children = {
+                    UI.ScrollView {
+                        id = "tabContent",
+                        width = "100%",
+                        flexGrow = 1,
+                        showScrollbar = false,
+                        padding = { 2, 2, 2, 2 },
+                        onScroll = function(self, sx, sy)
+                            if not pendingRestore then
+                                tabScrollY[gameState.activeTab] = sy
+                            end
+                        end,
+                        children = { M.CreateTabContent() },
+                    },
+                },
             },
             UI.Panel {
                 id = "drawBtnFixed",
                 width = "100%",
                 flexDirection = drawBtnDir,
-                padding = { 0, 6, 6, 6 },
+                padding = { 4, 6, 4, 6 },
                 gap = 4,
                 children = fixedBtnChildren,
             },
@@ -166,126 +201,75 @@ function M.CreateUpgradePanel()
 end
 
 function M.CreateDropCircleButton()
-    local circleSize = 64
-    local tabBarH = 42
-    local bottomOffset = tabBarH + 6
+    local btnSize = 68
 
-    local bt = Config.BALL_TYPES[gameState.selectedBallType]
-
-    -- 投弹按钮面板
-    local dropBtnPanel = UI.Panel {
-        width = "100%",
-        alignItems = "center",
-        marginBottom = bottomOffset,
-        pointerEvents = "box-none",
-        children = {
-            UI.Panel {
-                id = "dropOuter",
-                width = circleSize + 10, height = circleSize + 10,
-                borderRadius = (circleSize + 10) / 2,
-                backgroundColor = { bt.color[1], bt.color[2], bt.color[3], 35 },
-                justifyContent = "center", alignItems = "center",
-                pointerEvents = "box-none",
-                children = {
-                    UI.Panel {
-                        id = "dropCircle",
-                        width = circleSize, height = circleSize,
-                        borderRadius = circleSize / 2,
-                        backgroundColor = { 25, 30, 55, 140 },
-                        borderColor = { bt.color[1], bt.color[2], bt.color[3], 200 },
-                        borderWidth = 2.5,
-                        justifyContent = "center", alignItems = "center",
-                        pointerEvents = "auto",
-                        onClick = function()
-                            if gameState.roundPhase == "failed" then return end
-                            PlayClickSfx()
-                            M.HideTutorial()
-                            if M.Physics then
-                                local dropped = M.Physics.DropMultipleBalls(true)
-                                if dropped == 0 then
-                                    gameState.failedToast = { timer = 1.5, text = "金币不足", offsetY = 0 }
-                                end
-                            end
-                        end,
-                        children = {
-                            (function()
-                                local activeSkin = gameState.ballSkins[gameState.selectedBallType] or "default"
-                                if activeSkin ~= "default" and bt.skinKey then
-                                    return UI.Panel {
-                                        id = "dropBallDot",
-                                        width = 30, height = 30,
-                                        backgroundImage = Config.GetBallSkinImage(bt.skinKey),
-                                        backgroundSize = "contain",
-                                        pointerEvents = "none",
-                                    }
-                                else
-                                    return UI.Panel {
-                                        id = "dropBallDot",
-                                        width = 24, height = 24, borderRadius = 12,
-                                        backgroundColor = bt.color,
-                                        pointerEvents = "none",
-                                    }
-                                end
-                            end)(),
-                        }
-                    },
-                }
-            },
-        }
+    -- 球体图片（带按下动画）
+    local ballImg = UI.Panel {
+        id = "dropBallImg",
+        position = "absolute",
+        top = 13, left = 13, right = 13, bottom = 11,
+        backgroundImage = "image/ui_drop_ball_20260517191044.png",
+        backgroundFit = "contain",
+        pointerEvents = "none",
+        transition = "scale 0.15s easeOut, opacity 0.1s easeOut",
     }
 
-    -- 新手教程
-    local outerChildren = {}
-    if gameState.round == 1 and gameState.drawCount == 0 then
-        tutorialVisible = true
-        local isMobile = PlatformUtils.IsMobilePlatform()
-        local hintText = "👆 点击投弹"
-        if not isMobile then
-            hintText = "👆 点击投弹 / 按空格键"
-        end
-        tutorialPanel = UI.Panel {
-            id = "tutorialHint",
-            position = "absolute",
-            bottom = bottomOffset + circleSize + 16,
-            width = "100%",
-            alignItems = "center",
-            pointerEvents = "none",
-            children = {
-                UI.Panel {
-                    backgroundColor = { 255, 200, 50, 220 },
-                    borderRadius = 12,
-                    padding = { 8, 16, 8, 16 },
-                    children = {
-                        UI.Label {
-                            text = hintText,
-                            fontSize = 15,
-                            color = { 30, 20, 10, 255 },
-                            fontWeight = "bold",
-                        },
-                    }
-                },
-                UI.Label {
-                    text = "▼",
-                    fontSize = 20,
-                    color = { 255, 200, 50, 220 },
-                    marginTop = -4,
-                },
-            }
-        }
-        table.insert(outerChildren, tutorialPanel)
-    end
+    -- 边框按钮（图片版）
+    local frameImg = UI.Panel {
+        id = "dropFrameImg",
+        width = btnSize,
+        height = btnSize,
+        backgroundImage = "image/ui_drop_frame_20260518063812.png",
+        backgroundFit = "contain",
+        pointerEvents = "auto",
+        onPointerDown = function(event, widget)
+            ballImg:SetStyle({ scale = 0.85, opacity = 0.8 })
+        end,
+        onPointerUp = function(event, widget)
+            ballImg:SetStyle({ scale = 1.0, opacity = 1.0 })
+        end,
+        onPointerLeave = function(event, widget)
+            ballImg:SetStyle({ scale = 1.0, opacity = 1.0 })
+        end,
+        onClick = function()
+            if gameState.roundPhase == "failed" then return end
+            PlayClickSfx()
+            M.HideTutorial()
+            if M.Physics then
+                local dropped = M.Physics.DropMultipleBalls(true)
+                if dropped == 0 then
+                    gameState.failedToast = { timer = 1.5, text = "金币不足", offsetY = 0 }
+                end
+            end
+        end,
+        children = { ballImg },
+    }
 
-    table.insert(outerChildren, dropBtnPanel)
-
+    -- 嵌入 TabBar 行内的投弹按钮（与放置模式一致）
     return UI.Panel {
-        position = "absolute",
-        bottom = 0,
-        width = "100%",
-        height = bottomOffset + circleSize + 100,
-        alignItems = "center",
+        id = "tab_drop",
+        flexGrow = 1.2, flexBasis = 0,
+        height = "100%",
+        flexDirection = "column",
         justifyContent = "flex-end",
-        pointerEvents = "box-none",
-        children = outerChildren,
+        alignItems = "center",
+        overflow = "visible",
+        pointerEvents = "auto",
+        children = {
+            UI.Panel {
+                overflow = "visible",
+                marginBottom = 2,
+                marginTop = -32,
+                children = { frameImg },
+            },
+            UI.Label {
+                text = "投放",
+                fontSize = 12,
+                fontColor = { 160, 185, 220, 220 },
+                textAlign = "center",
+                marginBottom = 2,
+            },
+        },
     }
 end
 
@@ -301,17 +285,28 @@ end
 -- TabBar + 滚动记忆
 -- ============================================================================
 
+-- 激活态底部径向高光
+local TAB_GLOW_ACTIVE = {
+    type = "radial",
+    cx = 0.5, cy = 0.7,
+    radius = 0.45,
+    from = { 60, 140, 255, 100 },
+    to   = { 60, 140, 255, 0 },
+}
+
 function M.CreateTabBar()
     return UI.Panel {
         id = "tabBar",
         width = "100%",
         flexDirection = "row",
         height = 42,
-        borderColor = { 50, 60, 90, 200 },
-        borderWidth = { 1, 0, 0, 0 },
+        overflow = "visible",
+        backgroundImage = IMG.BOTTOM_BAR,
+        backgroundFit = "cover",
         children = {
             M.CreateTabButton("钢珠", "balls"),
             M.CreateTabButton("口袋", "pockets"),
+            M.CreateDropCircleButton(),
             M.CreateTabButton("升级", "upgrades"),
             M.CreateTabButton("符文", "runes"),
         }
@@ -320,15 +315,12 @@ end
 
 function M.CreateTabButton(label, tabKey)
     local isActive = (gameState.activeTab == tabKey)
-    return UI.Panel {
+    local cfg = {
         id = "tab_" .. tabKey,
         flexGrow = 1, flexBasis = 0,
         height = "100%",
         justifyContent = "center",
         alignItems = "center",
-        backgroundColor = isActive and { 35, 45, 75, 255 } or { 18, 22, 40, 255 },
-        borderColor = isActive and { 90, 130, 220, 255 } or { 40, 50, 70, 0 },
-        borderWidth = { isActive and 2 or 0, 0, 0, 0 },
         pointerEvents = "auto",
         onClick = function()
             PlayClickSfx()
@@ -343,14 +335,18 @@ function M.CreateTabButton(label, tabKey)
             UI.Label {
                 id = "tabLabel_" .. tabKey,
                 text = label,
-                fontSize = 17,
+                fontSize = 14,
                 fontColor = isActive
                     and { 180, 210, 255, 255 }
                     or { 100, 110, 140, 200 },
                 textAlign = "center",
             },
-        }
+        },
     }
+    if isActive then
+        cfg.backgroundGradient = TAB_GLOW_ACTIVE
+    end
+    return UI.Panel(cfg)
 end
 
 function M.CreateTabContent()
@@ -741,16 +737,10 @@ local function ComputeAffordKey()
     if tab == "balls" then
         local bits = {}
         for i = 1, #Config.BALL_TYPES do
-            local bt = Config.BALL_TYPES[i]
             local level = gameState.ballLevels[i]
             local isUnlocked = level > 0
-            local isAdOnly = bt.adOnly and not isUnlocked
-            if isAdOnly then
-                bits[i] = "x"
-            else
-                local cost = isUnlocked and Upgrades.GetBallUpgradeCost(i) or bt.cost
-                bits[i] = (gameState.coins >= cost) and "1" or "0"
-            end
+            local cost = isUnlocked and Upgrades.GetBallUpgradeCost(i) or Config.BALL_TYPES[i].cost
+            bits[i] = (gameState.coins >= cost) and "1" or "0"
         end
         return "B" .. table.concat(bits)
     elseif tab == "pockets" then
@@ -784,7 +774,7 @@ function M.RefreshAllItemsInCurrentTab()
 
     if gameState.activeTab == "balls" then
         for i = 1, #Config.BALL_TYPES do
-            M.RefreshBallItem(i)
+            BallPanel.UpdateAffordability(cb, i)
         end
     elseif gameState.activeTab == "pockets" then
         for i = 1, #gameState.slots do
@@ -835,9 +825,7 @@ function M.UpdateTabBar()
         local tabBtn = State.uiRoot_:FindById("tab_" .. key)
         if tabBtn then
             tabBtn:SetStyle({
-                backgroundColor = isActive and { 35, 45, 75, 255 } or { 18, 22, 40, 255 },
-                borderColor = isActive and { 90, 130, 220, 255 } or { 40, 50, 70, 0 },
-                borderWidth = { isActive and 2 or 0, 0, 0, 0 },
+                backgroundGradient = isActive and TAB_GLOW_ACTIVE or "none",
             })
         end
         local tabLabel = State.uiRoot_:FindById("tabLabel_" .. key)
@@ -852,34 +840,7 @@ function M.UpdateTabBar()
 end
 
 function M.UpdateDropButton()
-    if not State.uiRoot_ then return end
-    local bt = Config.BALL_TYPES[gameState.selectedBallType]
-    local outer = State.uiRoot_:FindById("dropOuter")
-    if outer then
-        outer:SetStyle({ backgroundColor = { bt.color[1], bt.color[2], bt.color[3], 35 } })
-    end
-    local circle = State.uiRoot_:FindById("dropCircle")
-    if circle then
-        circle:SetStyle({ borderColor = { bt.color[1], bt.color[2], bt.color[3], 200 } })
-    end
-    local dot = State.uiRoot_:FindById("dropBallDot")
-    if dot then
-        local activeSkin = gameState.ballSkins[gameState.selectedBallType] or "default"
-        if activeSkin ~= "default" and bt.skinKey then
-            dot:SetStyle({
-                width = 30, height = 30, borderRadius = 0,
-                backgroundColor = { 0, 0, 0, 0 },
-                backgroundImage = Config.GetBallSkinImage(bt.skinKey),
-                backgroundSize = "contain",
-            })
-        else
-            dot:SetStyle({
-                width = 24, height = 24, borderRadius = 12,
-                backgroundColor = bt.color,
-                backgroundImage = "",
-            })
-        end
-    end
+    -- 图片版投弹按钮无需按球类型变色，保留空函数供事件回调调用
 end
 
 -- ============================================================================
@@ -894,14 +855,18 @@ function M.SubscribeEvents()
     EventBus.on("ball_changed", function(data)
         M.UpdateDropButton()
         if gameState.activeTab == "balls" and data then
-            M.RefreshBallItem(data.index)
+            -- 变更的球：就地更新等级文本 + affordability（避免 remove+insert 高度闪烁）
+            BallPanel.UpdateBallLevel(cb, data.index)
+            -- 旧选中球：选中态/广告按钮可能变化，就地更新
             if data.prevSelected and data.prevSelected ~= data.index then
-                M.RefreshBallItem(data.prevSelected)
+                BallPanel.UpdateBallLevel(cb, data.prevSelected)
             end
+            -- 其余球：只有 affordability 样式可能变，就地更新即可
             if data.coinsSpent then
+                lastAffordKey = ""  -- 清除缓存，让下次 affordability 检查生效
                 for i = 1, #Config.BALL_TYPES do
                     if i ~= data.index and i ~= data.prevSelected then
-                        M.RefreshBallItem(i)
+                        BallPanel.UpdateAffordability(cb, i)
                     end
                 end
             end
@@ -952,7 +917,10 @@ function M.SubscribeEvents()
     end)
 
     EventBus.on("round_started", function()
-        M.RefreshTabContent()
+        -- 只有 runes tab 依赖 round 数据（精粹奖励预览），其余 tab 无需重建
+        if gameState.activeTab == "runes" then
+            M.RefreshTabContent()
+        end
     end)
 
     EventBus.on("enchant_changed", function(data)

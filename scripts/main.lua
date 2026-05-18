@@ -17,6 +17,8 @@ local PegEffects = require("PegEffects")
 local Settlement = require("Settlement")
 
 local Runes = require("Runes")
+local IdleMode = require("IdleMode")
+local IdleUI   = require("IdleUI")
 local EventBus = require("EventBus")
 local Profiler = require("Profiler")
 local PlatformUtils = require("urhox-libs.Platform.PlatformUtils")
@@ -79,8 +81,8 @@ end
 local function OnRoundSuccess()
     -- 飘字提示
     local S = State.S
-    local cx = (gameState.boardLeft + gameState.boardRight) / 2
-    local cy = (gameState.boardTop + gameState.boardBottom) / 2
+    local cx = (gameState.contentLeft + gameState.contentRight) / 2
+    local cy = (gameState.contentTop + gameState.contentBottom) / 2
     table.insert(gameState.popups, {
         x = cx, y = cy - S(20),
         text = "过关！",
@@ -123,7 +125,7 @@ local function OnRoundSuccess()
     })
 
     Physics.PlaySfx(State.sfxRoundSuccess, 0.6)
-    gameState.screenShake = 0.3
+    gameState.screenShake = 0.15
 
     print(string.format("[Round] Round %d SUCCESS! gems=%d", gameState.round, gemReward))
 
@@ -494,6 +496,13 @@ HandleMenuClick = function(lx, ly)
         gameState.gamePhase = "runes"
         return
     end
+
+    -- 放置模式
+    if HitRect(Renderer.menuIdleRect, lx, ly) then
+        Physics.PlaySfx(State.sfxButtonClick, 0.5)
+        IdleMode.Enter()
+        return
+    end
 end
 
 --- 符文界面点击
@@ -586,6 +595,20 @@ function HandleUpdate(eventType, eventData)
             local mx = input.mousePosition.x / dpr
             local my = input.mousePosition.y / dpr
             HandleRuneClick(mx, my)
+        end
+        return
+    end
+
+    -- ==== 放置模式阶段 ====
+    if gameState.gamePhase == "idle" then
+        IdleMode.Update(dt)
+        IdleUI.Update(dt)
+        -- 节流存档（每 5 秒）
+        if not M_idleSaveTimer then M_idleSaveTimer = 0 end
+        M_idleSaveTimer = M_idleSaveTimer + dt
+        if M_idleSaveTimer >= 5 then
+            M_idleSaveTimer = 0
+            SaveSystem.SaveLocal()
         end
         return
     end

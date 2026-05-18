@@ -192,9 +192,13 @@ end
 -- 获取碰撞半径（供 Physics.lua 碰撞检测使用）
 -- ============================================================================
 
---- 返回碰撞半径
+--- 返回弹钉磁场加成后的碰撞半径
 ---@return number 碰撞判定用的钉子半径
 function M.GetPegCollisionRadius()
+    local pegMagnetVal = Upgrades.GetEffectValue("peg_magnet")
+    if pegMagnetVal > 0 then
+        return CONFIG.PEG_RADIUS * (gameState.boardScale or 1) * (1 + pegMagnetVal)
+    end
     return CONFIG.PEG_RADIUS * (gameState.boardScale or 1)
 end
 
@@ -233,7 +237,7 @@ local function _rebuildActiveHandlers()
     if Upgrades.GetEffectLevel("peg_gem") > 0 then add(M._applyPegGem) end
     add(M._applyEnchantGemChance)  -- 附魔宝石概率（按球检查，总是添加）
     if Upgrades.GetEffectLevel("echo_hit") > 0 then add(M._applyEchoHit) end
-
+    if Upgrades.GetEffectLevel("peg_spark") > 0 then add(M._applyPegSpark, true) end
 
     -- 球自带效果（总是添加，内部按球类型判断）
     add(M._applyBallPegEffects)
@@ -247,7 +251,7 @@ local function _rebuildActiveHandlers()
 
     -- Phase 4: 物理修改
     if Upgrades.GetEffectLevel("peg_launch") > 0 then add(M._applyPegLaunch) end
-
+    if Upgrades.GetEffectLevel("peg_slow") > 0 then add(M._applyPegSlow) end
     if Upgrades.GetEffectLevel("peg_wave") > 0 then add(M._applyPegWave) end
     if Upgrades.GetEffectLevel("growth_momentum") > 0 then add(M._applyGrowthMomentum) end
 
@@ -605,6 +609,20 @@ function M._applyEnchantGemChance(ctx)
     end
 end
 
+function M._applyPegSpark(ctx)
+    local val = Upgrades.GetEffectValue("peg_spark")
+    if val <= 0 then return end
+
+    if math_random() < val then
+        local nearest = findNearestPeg(ctx.peg, ctx.allPegs)
+        if nearest then
+            -- 递归一次（isSpark=true）
+            nearest.hitTimer = CONFIG.PEG_HIT_DURATION
+            M.OnPegHit(ctx.ball, nearest, ctx.allPegs, ctx.allBalls, true)
+        end
+    end
+end
+
 function M._applyBallPegEffects(ctx)
     local ball = ctx.ball
     local ballType = Config.BALL_TYPES[ball.typeIndex]
@@ -668,6 +686,14 @@ function M._applyPegLaunch(ctx)
     if val > 0 then
         ctx.ball.vx = ctx.ball.vx * (1 + val)
         ctx.ball.vy = ctx.ball.vy * (1 + val)
+    end
+end
+
+function M._applyPegSlow(ctx)
+    local val = Upgrades.GetEffectValue("peg_slow")
+    if val > 0 then
+        ctx.ball.vx = ctx.ball.vx * (1 - val)
+        ctx.ball.vy = ctx.ball.vy * (1 - val)
     end
 end
 

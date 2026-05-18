@@ -7,6 +7,7 @@ local BigNum = require("BigNum")
 local State = require("State")
 local Slots = require("Slots")
 local Upgrades = require("Upgrades")
+local IdleMode = require("IdleMode")
 
 local CONFIG = Config.CONFIG
 local gameState = State.gameState
@@ -57,6 +58,12 @@ end
 local menuDots = nil  -- 延迟初始化（需要 S() 和屏幕尺寸）
 local menuDotsW, menuDotsH = 0, 0  -- 上次计算时的屏幕尺寸
 
+-- 菜单图片资源（延迟加载）
+local imgMenuBg = nil       -- 主页背景图
+local imgBtnBlue = nil      -- 蓝色按钮边框（新游戏、继续游戏）
+local imgBtnPurple = nil    -- 紫色按钮边框（符文）
+local imgBtnGreen = nil     -- 绿色按钮边框（放置模式）
+
 -- 按钮点击区域（供 main.lua 检测）
 M.lbBtnRect = nil       -- { x, y, w, h } 逻辑坐标
 M.settingsBtnRect = nil  -- 设置按钮区域
@@ -64,6 +71,11 @@ M.settingsBtnRect = nil  -- 设置按钮区域
 -- 图标句柄（延迟加载）
 local imgCoin = nil
 local imgGem = nil
+local imgGold = nil  -- 金币图标（idle 模式用）
+local imgCurrBar = nil  -- 货币栏背景图
+local imgPeg = nil       -- 撞钉图片
+local imgArcade = nil    -- 街机边框
+
 
 -- 球皮肤图片缓存 { [skinKey] = nvgImageHandle }
 local ballSkinImages = {}
@@ -80,6 +92,35 @@ local _idleColorGroups = {
 
 --- 缩放快捷引用（每帧更新后使用）
 local S = State.S
+
+-- 水印信息
+local GAME_VERSION = "v1.0.0"
+M.GAME_VERSION = GAME_VERSION
+local cachedUidStr = nil  -- 延迟获取
+
+--- 绘制全局水印（右上角用户ID）
+--- 左下角版本号通过 UI 层显示（避免被 UI 面板遮挡）
+local function DrawWatermark(vg, w, h)
+    -- 延迟获取用户ID（clientCloud 可能尚未初始化）
+    if not cachedUidStr then
+        ---@diagnostic disable-next-line: undefined-global
+        if clientCloud and clientCloud.userId then
+            cachedUidStr = "ID:" .. tostring(clientCloud.userId)
+        else
+            cachedUidStr = ""
+        end
+    end
+
+    nvgFontFace(vg, "sans")
+    nvgFontSize(vg, S(9))
+
+    -- 右上角：用户ID
+    if cachedUidStr ~= "" then
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_TOP)
+        nvgFillColor(vg, nvgRGBA(180, 190, 210, 100))
+        nvgText(vg, w - S(4), S(3), cachedUidStr, nil)
+    end
+end
 
 --- NanoVG 渲染主入口
 function M.HandleNanoVGRender(eventType, eventData)
@@ -98,29 +139,47 @@ function M.HandleNanoVGRender(eventType, eventData)
 
     -- 延迟加载图标（只创建一次）
     if not imgCoin then
-        imgCoin = nvgCreateImage(vg, "image/coin_20260328213706.png", 0)
+        imgCoin = nvgCreateImage(vg, "image/gold_coin.png", 0)
     end
     if not imgGem then
         imgGem = nvgCreateImage(vg, "image/gem_20260328213704.png", 0)
+    end
+    if not imgGold then
+        imgGold = nvgCreateImage(vg, "image/gold_coin.png", 0)
+    end
+    if not imgCurrBar then
+        imgCurrBar = nvgCreateImage(vg, "image/ui_currency_bar_20260518073701.png", 0)
+    end
+    if not imgPeg then
+        imgPeg = nvgCreateImage(vg, "image/peg_20260518150745.png", 0)
     end
 
     nvgBeginFrame(vg, w, h, dpr)
 
     if gameState.gamePhase == "menu" then
         M.DrawMenuScreen(vg, w, h)
+        DrawWatermark(vg, w, h)
         nvgEndFrame(vg)
         return
     end
 
     if gameState.gamePhase == "runes" then
         M.DrawRuneScreen(vg, w, h)
+        DrawWatermark(vg, w, h)
+        nvgEndFrame(vg)
+        return
+    end
+
+    if gameState.gamePhase == "idle" then
+        IdleMode.Render(vg, w, h)
+        DrawWatermark(vg, w, h)
         nvgEndFrame(vg)
         return
     end
 
     if gameState.screenShake > 0 and gameState.settings.shakeEnabled then
         nvgSave(vg)
-        nvgTranslate(vg, (math.random() - 0.5) * S(6), (math.random() - 0.5) * S(6))
+        nvgTranslate(vg, (math.random() - 0.5) * S(3), (math.random() - 0.5) * S(3))
     end
 
     M.DrawBackground(vg, w, h)
@@ -130,6 +189,10 @@ function M.HandleNanoVGRender(eventType, eventData)
     nvgScissor(vg, 0, 0, w, gameState.splitY + 2)
     M.DrawBoard(vg, w, h)
 
+    Profiler.Begin("DrawSlots")
+    M.DrawSlots(vg)
+    Profiler.End("DrawSlots")
+
     Profiler.Begin("DrawPegs")
     M.DrawPegs(vg)
     Profiler.End("DrawPegs")
@@ -137,10 +200,6 @@ function M.HandleNanoVGRender(eventType, eventData)
     Profiler.Begin("DrawBalls")
     M.DrawBalls(vg)
     Profiler.End("DrawBalls")
-
-    Profiler.Begin("DrawSlots")
-    M.DrawSlots(vg)
-    Profiler.End("DrawSlots")
 
     Profiler.Begin("DrawPopups")
     M.DrawPopups(vg)
@@ -171,6 +230,7 @@ function M.HandleNanoVGRender(eventType, eventData)
     -- ---- 性能叠加层（已隐藏） ----
     -- Profiler.DrawOverlay(vg, S(4), S(55))
 
+    DrawWatermark(vg, w, h)
     nvgEndFrame(vg)
 end
 
@@ -212,7 +272,26 @@ function M.DrawBackground(vg, w, h)
 end
 
 function M.DrawBoard(vg, w, h)
-    -- 不再绘制遮罩，背景图直接透出
+    -- 街机边框
+    if not imgArcade then
+        imgArcade = nvgCreateImage(vg, "image/arcade_3d_20260518160636.png", 0)
+    end
+    if imgArcade and imgArcade >= 0 then
+        local bL = gameState.boardLeft
+        local bR = gameState.boardRight
+        local bT = gameState.boardTop
+        local bB = gameState.boardBottom
+        -- 边框图片比棋盘区域稍大，留出边框厚度
+        local padX = S(12)
+        local padTop = S(25)
+        local padBot = S(12)
+        local dx, dy = bL - padX, bT - padTop
+        local dw, dh = (bR - bL) + padX * 2, (bB - bT) + padTop + padBot
+        nvgBeginPath(vg)
+        nvgRect(vg, dx, dy, dw, dh)
+        nvgFillPaint(vg, nvgImagePattern(vg, dx, dy, dw, dh, 0, imgArcade, 1.0))
+        nvgFill(vg)
+    end
 end
 
 function M.DrawPegs(vg)
@@ -222,12 +301,14 @@ function M.DrawPegs(vg)
 
     -- 缓存激活的弹钉效果（避免每个钉每帧查询）
     local hasGold = Upgrades.GetEffectLevel("peg_gold") > 0
+    local hasMagnet = Upgrades.GetEffectLevel("peg_magnet") > 0
     local hasResonance = Upgrades.GetEffectLevel("peg_resonance") > 0
     local hasBonus = Upgrades.GetEffectLevel("peg_bonus") > 0
+    local hasSpark = Upgrades.GetEffectLevel("peg_spark") > 0
     local hasCharge = Upgrades.GetEffectLevel("peg_charge") > 0
     local hasMark = Upgrades.GetEffectLevel("peg_mark") > 0
-    local hasAnyEffect = hasGold or hasResonance or hasBonus
-        or hasCharge or hasMark
+    local hasAnyEffect = hasGold or hasMagnet or hasResonance or hasBonus
+        or hasSpark or hasCharge or hasMark
 
     -- 预计算脉冲值（所有钉共享）
     local pulse = 0.5 + 0.5 * math.sin(time * 3)
@@ -305,9 +386,22 @@ function M.DrawPegs(vg)
             nvgFill(vg)
         end
 
+        -- 磁场环（合批 stroke）
+        if hasMagnet then
+            local magnetR = pegR + S(2.5) * pulse2
+            nvgBeginPath(vg)
+            for _, peg in ipairs(gameState.pegs) do
+                nvgCircle(vg, peg.x, peg.y, magnetR)
+            end
+            nvgStrokeColor(vg, nvgRGBA(100, 180, 255, math.floor(30 + 25 * pulse2)))
+            nvgStrokeWidth(vg, S(0.8))
+            nvgStroke(vg)
+        end
+
+        -- 火花点（已移除）
     end
 
-    -- ====== 钉子本体层（合批渲染，零分配） ======
+    -- ====== 钉子本体层 ======
     local cr, cg, cb = CONFIG.PEG_HIT_COLOR[1], CONFIG.PEG_HIT_COLOR[2], CONFIG.PEG_HIT_COLOR[3]
 
     -- 按颜色分组渲染 idle 钉（固定颜色组，不分配表）
@@ -344,70 +438,32 @@ function M.DrawPegs(vg)
         end
     end
 
-    -- idle 钉按颜色合批
-    if lowQ then
-        -- 低画质：所有 idle 钉统一颜色，1 个 draw call
-        local hasIdle = false
+    -- idle 钉阴影层
+    if not lowQ then
+        nvgBeginPath(vg)
         for _, peg in ipairs(gameState.pegs) do
             if peg.hitTimer <= 0 then
-                if not hasIdle then nvgBeginPath(vg); hasIdle = true end
-                nvgCircle(vg, peg.x, peg.y, pegR)
+                nvgCircle(vg, peg.x + S(1.5), peg.y + S(2), pegR * 0.95)
             end
         end
-        if hasIdle then
-            nvgFillColor(vg, nvgRGBA(180, 200, 220, 255))
-            nvgFill(vg)
-        end
-        return  -- 低画质 DrawPegs 结束
+        nvgFillColor(vg, nvgRGBA(0, 0, 0, 50))
+        nvgFill(vg)
     end
 
-    -- 高画质：单趟分类 + 按组合批渲染（替代 6 趟扫描）
-    -- 分类桶索引: 1=burning, 2=charged, 3=marked, 4=gold, 5=effect, 6=default
-    local bucketCounts = { 0, 0, 0, 0, 0, 0 }
-    -- 用 6 个 flat array 存储各组钉子的 x,y（避免创建表）
-    -- 每个桶最多 ~90 颗钉，预分配静态表
-    if not M._pegBucketX then
-        M._pegBucketX = { {}, {}, {}, {}, {}, {} }
-        M._pegBucketY = { {}, {}, {}, {}, {}, {} }
-    end
-    local bkX, bkY = M._pegBucketX, M._pegBucketY
-
+    -- idle 钉：使用图片绘制
+    local imgDrawR = pegR * 1.6  -- 图片含外发光，绘制尺寸比碰撞半径大
+    local imgDrawD = imgDrawR * 2
     for _, peg in ipairs(gameState.pegs) do
         if peg.hitTimer <= 0 then
-            local bucket
-            if peg.burning then
-                bucket = 1
-            elseif peg.chargedBy then
-                bucket = 2
-            elseif peg.markedBy then
-                bucket = 3
-            elseif hasGold then
-                bucket = 4
-            elseif hasAnyEffect then
-                bucket = 5
-            else
-                bucket = 6
-            end
-            local n = bucketCounts[bucket] + 1
-            bucketCounts[bucket] = n
-            bkX[bucket][n] = peg.x
-            bkY[bucket][n] = peg.y
-        end
-    end
-
-    for gi = 1, 6 do
-        local cnt = bucketCounts[gi]
-        if cnt > 0 then
-            local grp = _idleColorGroups[gi]
+            local px, py = peg.x - imgDrawR, peg.y - imgDrawR
             nvgBeginPath(vg)
-            local gx, gy = bkX[gi], bkY[gi]
-            for k = 1, cnt do
-                nvgCircle(vg, gx[k], gy[k], pegR)
-            end
-            nvgFillColor(vg, nvgRGBA(grp.r, grp.g, grp.b, 255))
+            nvgRect(vg, px, py, imgDrawD, imgDrawD)
+            nvgFillPaint(vg, nvgImagePattern(vg, px, py, imgDrawD, imgDrawD, 0, imgPeg, 1.0))
             nvgFill(vg)
         end
     end
+
+    if lowQ then return end
 end
 
 function M.DrawBalls(vg)
@@ -547,145 +603,178 @@ function M.DrawBalls(vg)
     end
 end
 
+-- 口袋底图缓存
+local imgSlotTray = nil
+
 function M.DrawSlots(vg)
     local fontNormal = State.fontNormal
     local slotCount = #gameState.slots
     local slotW = gameState.slotWidth
     local bs = gameState.boardScale or 1
-    local slotY = gameState.boardBottom - CONFIG.SLOT_HEIGHT * bs
+    local slotY = gameState.contentBottom - CONFIG.SLOT_HEIGHT * bs
     local slotH = CONFIG.SLOT_HEIGHT * bs
     local time = GetTime():GetElapsedTime()
     local lowQ = State.lowQuality
 
-    if lowQ then
-        -- 低画质：所有 slot 背景合批纯色填充（1 fill + 1 stroke 替代 slotCount 个渐变）
+    -- 放置模式 per-slot 填充进度需要的数据
+    local isIdle = (gameState.gamePhase == "idle")
+
+    -- ===== 口袋底图（图片） =====
+    if not imgSlotTray then
+        imgSlotTray = nvgCreateImage(vg, "image/slot_tray_wide_trimmed.png", 0)
+    end
+    if imgSlotTray and imgSlotTray >= 0 then
+        -- 拉伸到和边框一样宽（boardLeft/Right）
+        local bL = gameState.boardLeft
+        local bR = gameState.boardRight
+        local dw = bR - bL
+        local dh = slotH
+        local dx = bL
+        local dy = gameState.contentBottom - dh
         nvgBeginPath(vg)
-        for i = 1, slotCount do
-            local sx = gameState.boardLeft + (i - 1) * slotW
-            nvgRect(vg, sx + 1, slotY, slotW - 2, slotH)
-        end
-        nvgFillColor(vg, nvgRGBA(40, 60, 100, 120))
+        nvgRect(vg, dx, dy, dw, dh)
+        nvgFillPaint(vg, nvgImagePattern(vg, dx, dy, dw, dh, 0, imgSlotTray, 1.0))
         nvgFill(vg)
+    end
 
-        nvgBeginPath(vg)
-        for i = 1, slotCount do
-            local sx = gameState.boardLeft + (i - 1) * slotW
-            nvgRect(vg, sx + 1, slotY, slotW - 2, slotH)
-        end
-        nvgStrokeColor(vg, nvgRGBA(80, 120, 180, 160))
-        nvgStrokeWidth(vg, 1)
-        nvgStroke(vg)
-
-        -- 文字仍逐个绘制（文本无法合批，但开销很小）
-        nvgFontFaceId(vg, fontNormal)
-        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-        nvgFillColor(vg, nvgRGBA(255, 255, 255, 220))
-        for i = 1, slotCount do
-            local slot = gameState.slots[i]
-            local slotMult = Slots.GetSlotMult(slot)
-            local label = Slots.GetSlotLabel(slot)
-            local sx = gameState.boardLeft + (i - 1) * slotW
-            local fontSize = S(13)
-            if slotMult >= 100 then fontSize = S(9)
-            elseif slotMult >= 10 then fontSize = S(11)
-            end
-            nvgFontSize(vg, fontSize)
-            nvgText(vg, sx + slotW / 2, slotY + slotH / 2, label, nil)
-        end
-    else
-        -- 高画质：逐个 slot 渲染渐变 + 脉冲动画
-        for i = 1, slotCount do
-            local slot = gameState.slots[i]
-            local slotMult = Slots.GetSlotMult(slot)
-            local color = Slots.GetSlotColor(slot)
-            local label = Slots.GetSlotLabel(slot)
-            local sx = gameState.boardLeft + (i - 1) * slotW
-
+    -- ===== 放置模式：per-slot 填充进度 =====
+    local edges = gameState.slotEdges
+    local centers = gameState.slotCenters
+    if isIdle and edges then
+        if lowQ then
             nvgBeginPath(vg)
-            nvgRect(vg, sx + 1, slotY, slotW - 2, slotH)
-            nvgFillPaint(vg, nvgLinearGradient(vg, sx, slotY, sx, slotY + slotH,
-                nvgRGBA(color[1], color[2], color[3], 160),
-                nvgRGBA(color[1], color[2], color[3], 80)))
+            for i = 1, slotCount do
+                local slot = gameState.slots[i]
+                local drops = slot.drops or 0
+                local req = IdleMode.GetSlotUpgradeRequirement(slot.level or 1)
+                local pct = drops / req
+                if pct > 1 then pct = 1 end
+                if pct > 0 then
+                    local eL = edges[i]
+                    local eR = edges[i + 1]
+                    local fillH = slotH * pct
+                    nvgRect(vg, eL + 1, slotY + slotH - fillH, eR - eL - 2, fillH)
+                end
+            end
+            nvgFillColor(vg, nvgRGBA(80, 200, 120, 100))
             nvgFill(vg)
-            nvgStrokeColor(vg, nvgRGBA(color[1], color[2], color[3], 200))
-            nvgStrokeWidth(vg, 1)
-            nvgStroke(vg)
-
-            nvgFontFaceId(vg, fontNormal)
-            local fontSize = S(13)
-            if slotMult >= 100 then fontSize = S(9)
-            elseif slotMult >= 10 then fontSize = S(11)
+        else
+            for i = 1, slotCount do
+                local slot = gameState.slots[i]
+                local drops = slot.drops or 0
+                local req = IdleMode.GetSlotUpgradeRequirement(slot.level or 1)
+                local pct = drops / req
+                if pct > 1 then pct = 1 end
+                if pct > 0 then
+                    local eL = edges[i]
+                    local eR = edges[i + 1]
+                    local fillH = slotH * pct
+                    nvgBeginPath(vg)
+                    nvgRect(vg, eL + 1, slotY + slotH - fillH, eR - eL - 2, fillH)
+                    local glowAlpha = math_floor(120 + 40 * math_sin(time * 3 + i))
+                    nvgFillPaint(vg, nvgLinearGradient(vg,
+                        eL, slotY + slotH - fillH, eL, slotY + slotH,
+                        nvgRGBA(80, 220, 140, glowAlpha),
+                        nvgRGBA(60, 180, 100, math_floor(glowAlpha * 0.6))))
+                    nvgFill(vg)
+                end
             end
-            nvgFontSize(vg, fontSize)
-            nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-            if slotMult >= 50 then
-                local pulse = 0.7 + 0.3 * math.sin(time * 5)
-                nvgFillColor(vg, nvgRGBA(255, 255, 100, math.floor(255 * pulse)))
-            elseif slotMult >= 10 then
-                local pulse = 0.7 + 0.3 * math.sin(time * 4)
-                nvgFillColor(vg, nvgRGBA(255, 230, 50, math.floor(255 * pulse)))
-            else
-                nvgFillColor(vg, nvgRGBA(255, 255, 255, 220))
-            end
-            nvgText(vg, sx + slotW / 2, slotY + slotH / 2, label, nil)
         end
     end
 
-    -- 竖直挡板（合批渲染：3 个 draw calls 替代 3×slotCount 个）
-    local divH = CONFIG.DIVIDER_HEIGHT * bs
-    local divW = CONFIG.DIVIDER_WIDTH * bs
-    local dc = CONFIG.DIVIDER_COLOR
-    local dg = CONFIG.DIVIDER_GLOW_COLOR
-
-    -- 1) 外发光层合批
-    nvgBeginPath(vg)
-    for i = 0, slotCount do
-        local x = gameState.boardLeft + i * slotW
-        local divTop = slotY + slotH - divH
-        nvgRoundedRect(vg, x - divW * 0.5 - 2, divTop, divW + 4, divH, S(2))
+    -- ===== 倍率文字 =====
+    nvgFontFaceId(vg, fontNormal)
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    for i = 1, slotCount do
+        local slot = gameState.slots[i]
+        local slotMult = Slots.GetSlotMult(slot)
+        local label = Slots.GetSlotLabel(slot)
+        local cx = centers and centers[i] or (gameState.boardLeft + (i - 0.5) * slotW)
+        local fontSize = S(13)
+        if slotMult >= 100 then fontSize = S(9)
+        elseif slotMult >= 10 then fontSize = S(11)
+        end
+        nvgFontSize(vg, fontSize)
+        if not lowQ and slotMult >= 50 then
+            local pulse = 0.7 + 0.3 * math_sin(time * 5)
+            nvgFillColor(vg, nvgRGBA(255, 255, 100, math_floor(255 * pulse)))
+        elseif not lowQ and slotMult >= 10 then
+            local pulse = 0.7 + 0.3 * math_sin(time * 4)
+            nvgFillColor(vg, nvgRGBA(255, 230, 50, math_floor(255 * pulse)))
+        else
+            nvgFillColor(vg, nvgRGBA(255, 255, 255, 220))
+        end
+        nvgText(vg, cx, slotY + slotH / 2, label, nil)
     end
-    nvgFillColor(vg, nvgRGBA(dg[1], dg[2], dg[3], dg[4]))
-    nvgFill(vg)
-
-    -- 2) 本体层合批（用统一颜色近似，避免每个 divider 单独渐变）
-    nvgBeginPath(vg)
-    for i = 0, slotCount do
-        local x = gameState.boardLeft + i * slotW
-        local divTop = slotY + slotH - divH
-        nvgRoundedRect(vg, x - divW * 0.5, divTop, divW, divH, S(1.5))
-    end
-    nvgFillColor(vg, nvgRGBA(dc[1] + 20, dc[2] + 20, dc[3] + 20, dc[4]))
-    nvgFill(vg)
-
-    -- 3) 顶部圆点合批
-    nvgBeginPath(vg)
-    for i = 0, slotCount do
-        local x = gameState.boardLeft + i * slotW
-        local divTop = slotY + slotH - divH
-        nvgCircle(vg, x, divTop, divW * 0.8)
-    end
-    nvgFillColor(vg, nvgRGBA(200, 220, 255, 200))
-    nvgFill(vg)
 end
 
 function M.DrawPopups(vg)
     local fontNormal = State.fontNormal
+    local GRAVITY = 150  -- 抛物线重力（未缩放像素/s²）
     for _, p in ipairs(gameState.popups) do
         local t = p.timer / CONFIG.POPUP_DURATION
-        local alpha = math.floor(255 * t)
-        local rise = S(CONFIG.POPUP_RISE) * (1 - t)
-        local py = p.y - rise
+        local alpha = math_floor(255 * t)
+
+        -- 位置计算
+        local px, py
+        if p.iconType then
+            -- 抛物线轨迹
+            local elapsed = p.elapsed or 0
+            local vx = p.vx or 0
+            local vy = p.vy or 0
+            px = p.x + S(vx * elapsed)
+            py = p.y + S(vy * elapsed + 0.5 * GRAVITY * elapsed * elapsed)
+        else
+            -- 旧行为：线性上升
+            local rise = S(CONFIG.POPUP_RISE) * (1 - t)
+            px = p.x
+            py = p.y - rise
+        end
 
         nvgFontFaceId(vg, fontNormal)
         nvgFontSize(vg, S(p.fontSize or 14))
 
-        if p.icon == "gem" and imgGem and imgGem >= 0 then
+        if p.iconType then
+            -- 新：图标 + 数字渲染
+            local iconImg = nil
+            if p.iconType == "coin" then
+                iconImg = imgCoin
+            elseif p.iconType == "ball" then
+                local sk = p.skinKey or "iron"
+                iconImg = ballSkinImages[sk]
+                if not iconImg then
+                    iconImg = nvgCreateImage(vg, Config.GetBallSkinImage(sk), 0)
+                    ballSkinImages[sk] = iconImg
+                end
+            elseif p.iconType == "gold" then
+                iconImg = imgGold
+            elseif p.iconType == "gem" then
+                iconImg = imgGem
+            end
+
+            local iconSz = S((p.fontSize or 14) + 4)
+            nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
+            local advance = nvgTextBounds(vg, 0, 0, p.text)
+            local totalW = iconSz + S(3) + advance
+            local startX = px - totalW / 2
+
+            if iconImg and iconImg >= 0 then
+                local paint = nvgImagePattern(vg, startX, py - iconSz / 2, iconSz, iconSz, 0, iconImg, alpha / 255)
+                nvgBeginPath(vg)
+                nvgRoundedRect(vg, startX, py - iconSz / 2, iconSz, iconSz, iconSz / 2)
+                nvgFillPaint(vg, paint)
+                nvgFill(vg)
+            end
+
+            nvgFillColor(vg, nvgRGBA(p.color[1], p.color[2], p.color[3], alpha))
+            nvgText(vg, startX + iconSz + S(3), py, p.text, nil)
+        elseif p.icon == "gem" and imgGem and imgGem >= 0 then
+            -- 旧版宝石图标渲染
             local iconSz = S((p.fontSize or 14) + 2)
             nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
-            local advance, bounds = nvgTextBounds(vg, 0, 0, p.text)
-            local textW = advance
-            local totalW = iconSz + S(3) + textW
-            local startX = p.x - totalW / 2
+            local advance = nvgTextBounds(vg, 0, 0, p.text)
+            local totalW = iconSz + S(3) + advance
+            local startX = px - totalW / 2
 
             local paint = nvgImagePattern(vg, startX, py - iconSz / 2, iconSz, iconSz, 0, imgGem, alpha / 255)
             nvgBeginPath(vg)
@@ -696,9 +785,10 @@ function M.DrawPopups(vg)
             nvgFillColor(vg, nvgRGBA(p.color[1], p.color[2], p.color[3], alpha))
             nvgText(vg, startX + iconSz + S(3), py, p.text, nil)
         else
+            -- 旧版纯文字渲染
             nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
             nvgFillColor(vg, nvgRGBA(p.color[1], p.color[2], p.color[3], alpha))
-            nvgText(vg, p.x, py, p.text, nil)
+            nvgText(vg, px, py, p.text, nil)
         end
     end
 end
@@ -760,36 +850,63 @@ function M.DrawTopBar(vg, w)
         nvgStroke(vg)
     end
 
-    -- ---- 列1: 货币（金币 + 宝石） ----
-    local col1Center = colW / 2
-    local iconX = col1Center - iconSize - S(2)
-    local textX = col1Center + S(2)
-    local iconY1 = textY - S(4) - iconSize / 2
-    local iconY2 = textY + S(10) - iconSize / 2
+    -- ---- 列1: 货币（金币 + 宝石）用背景图样式 ----
+    -- 背景图原图 430×96，圆直径≈图高
+    if imgCurrBar and imgCurrBar >= 0 then
+        local barImgH = S(16)  -- 每个货币栏高度
+        local barImgW = barImgH * 430 / 96  -- 保持图片比例
+        local barX = S(4)
+        local circleW = barImgH  -- 圆形区域宽度=高度
+        local coinIconSz = barImgH * 0.55
 
-    if imgCoin and imgCoin >= 0 then
-        local paint = nvgImagePattern(vg, iconX, iconY1, iconSize, iconSize, 0, imgCoin, 1.0)
+        -- 金币栏
+        local barY1 = textY - S(4) - barImgH / 2
+        local paint1 = nvgImagePattern(vg, barX, barY1, barImgW, barImgH, 0, imgCurrBar, 1.0)
         nvgBeginPath(vg)
-        nvgRect(vg, iconX, iconY1, iconSize, iconSize)
-        nvgFillPaint(vg, paint)
+        nvgRoundedRect(vg, barX, barY1, barImgW, barImgH, barImgH * 0.1)
+        nvgFillPaint(vg, paint1)
         nvgFill(vg)
-    end
 
-    nvgFontSize(vg, S(14))
-    nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
-    nvgFillColor(vg, nvgRGBA(255, 255, 255, 255))
-    nvgText(vg, textX, textY - S(4), cachedCoinStr, nil)
+        -- 金币图标（圆形区域居中）
+        if imgCoin and imgCoin >= 0 then
+            local cix = barX + (circleW - coinIconSz) / 2
+            local ciy = barY1 + (barImgH - coinIconSz) / 2
+            local cp = nvgImagePattern(vg, cix, ciy, coinIconSz, coinIconSz, 0, imgCoin, 1.0)
+            nvgBeginPath(vg)
+            nvgRect(vg, cix, ciy, coinIconSz, coinIconSz)
+            nvgFillPaint(vg, cp)
+            nvgFill(vg)
+        end
 
-    if imgGem and imgGem >= 0 then
-        local paint = nvgImagePattern(vg, iconX, iconY2, iconSize, iconSize, 0, imgGem, 1.0)
+        -- 金币数字
+        nvgFontSize(vg, S(11))
+        nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBA(255, 220, 60, 255))
+        nvgText(vg, barX + circleW + S(2), barY1 + barImgH / 2, cachedCoinStr, nil)
+
+        -- 宝石栏
+        local barY2 = textY + S(10) - barImgH / 2
+        local paint2 = nvgImagePattern(vg, barX, barY2, barImgW, barImgH, 0, imgCurrBar, 1.0)
         nvgBeginPath(vg)
-        nvgRect(vg, iconX, iconY2, iconSize, iconSize)
-        nvgFillPaint(vg, paint)
+        nvgRoundedRect(vg, barX, barY2, barImgW, barImgH, barImgH * 0.1)
+        nvgFillPaint(vg, paint2)
         nvgFill(vg)
-    end
 
-    nvgFillColor(vg, nvgRGBA(200, 230, 255, 255))
-    nvgText(vg, textX, textY + S(10), cachedGemStr, nil)
+        -- 宝石图标
+        if imgGem and imgGem >= 0 then
+            local gix = barX + (circleW - coinIconSz) / 2
+            local giy = barY2 + (barImgH - coinIconSz) / 2
+            local gp = nvgImagePattern(vg, gix, giy, coinIconSz, coinIconSz, 0, imgGem, 1.0)
+            nvgBeginPath(vg)
+            nvgRect(vg, gix, giy, coinIconSz, coinIconSz)
+            nvgFillPaint(vg, gp)
+            nvgFill(vg)
+        end
+
+        -- 宝石数字
+        nvgFillColor(vg, nvgRGBA(200, 230, 255, 255))
+        nvgText(vg, barX + circleW + S(2), barY2 + barImgH / 2, cachedGemStr, nil)
+    end
 
     -- ---- 列2: 排行榜 ----
     local col2Center = colW + colW / 2
@@ -892,242 +1009,205 @@ function M.DrawMenuScreen(vg, w, h)
     local fontNormal = State.fontNormal
     local time = GetTime():GetElapsedTime()
 
-    -- 背景渐变
-    nvgBeginPath(vg)
-    nvgRect(vg, 0, 0, w, h)
-    nvgFillPaint(vg, nvgLinearGradient(vg, 0, 0, 0, h,
-        nvgRGBA(10, 15, 35, 255), nvgRGBA(5, 8, 20, 255)))
-    nvgFill(vg)
+    -- 延迟加载菜单图片资源
+    if not imgMenuBg then
+        imgMenuBg = nvgCreateImage(vg, "image/主页背景图_20260518175707.png", 0)
+    end
+    if not imgBtnBlue then
+        imgBtnBlue = nvgCreateImage(vg, "image/btn_blue_20260518181012.png", 0)
+    end
+    if not imgBtnPurple then
+        imgBtnPurple = nvgCreateImage(vg, "image/btn_blue_20260518181012.png", 0)
+    end
+    if not imgBtnGreen then
+        imgBtnGreen = nvgCreateImage(vg, "image/btn_green_20260518181154.png", 0)
+    end
 
-    -- 装饰：散落的静态小圆点（预计算，屏幕尺寸变化时重建）
-    if not menuDots or menuDotsW ~= w or menuDotsH ~= h then
-        menuDots = {}
-        menuDotsW, menuDotsH = w, h
-        math.randomseed(42)
-        for i = 1, 40 do
-            menuDots[i] = {
-                x = math.random() * w,
-                y = math.random() * h,
-                r = S(2) + math.random() * S(2),
-                a = 40 + math.floor(math.random() * 60),
-            }
-        end
-    end
-    -- 合批渲染装饰圆点（按 alpha 分桶减少 draw call）
-    local dotBuckets = {}
-    for i = 1, 40 do
-        local dot = menuDots[i]
-        local a = dot.a
-        if not dotBuckets[a] then
-            dotBuckets[a] = {}
-        end
-        local b = dotBuckets[a]
-        b[#b + 1] = dot
-    end
-    for a, dots in pairs(dotBuckets) do
+    -- 背景图片（Cover 模式铺满屏幕）
+    if imgMenuBg ~= 0 then
+        local imgW, imgH = 540, 960  -- 原图尺寸
+        local scaleX, scaleY = w / imgW, h / imgH
+        local scale = math_max(scaleX, scaleY)
+        local drawW, drawH = imgW * scale, imgH * scale
+        local ox, oy = (w - drawW) / 2, (h - drawH) / 2
         nvgBeginPath(vg)
-        for _, dot in ipairs(dots) do
-            nvgCircle(vg, dot.x, dot.y, dot.r)
-        end
-        nvgFillColor(vg, nvgRGBA(120, 150, 200, a))
+        nvgRect(vg, 0, 0, w, h)
+        nvgFillPaint(vg, nvgImagePattern(vg, ox, oy, drawW, drawH, 0, imgMenuBg, 1.0))
+        nvgFill(vg)
+    else
+        -- fallback: 纯色背景
+        nvgBeginPath(vg)
+        nvgRect(vg, 0, 0, w, h)
+        nvgFillColor(vg, nvgRGBA(10, 15, 35, 255))
         nvgFill(vg)
     end
 
-    -- 装饰：几颗浮动的发光球
-    for i = 1, 5 do
-        local bx = w * (0.15 + 0.7 * ((i - 1) / 4))
-        local by = h * 0.35 + math.sin(time * 1.2 + i * 1.8) * S(30)
-        local br = S(8 + i * 2)
-        local colors = {
-            { 255, 100, 80 }, { 80, 200, 255 }, { 255, 220, 60 },
-            { 120, 255, 140 }, { 220, 130, 255 },
-        }
-        local c = colors[i]
-        -- 光晕
-        nvgBeginPath(vg)
-        nvgCircle(vg, bx, by, br + S(10))
-        nvgFillColor(vg, nvgRGBA(c[1], c[2], c[3], 30))
-        nvgFill(vg)
-        -- 球体
-        nvgBeginPath(vg)
-        nvgCircle(vg, bx, by, br)
-        nvgFillPaint(vg, nvgRadialGradient(vg, bx - S(2), by - S(2), 1, br,
-            nvgRGBA(255, 255, 255, 160),
-            nvgRGBA(c[1], c[2], c[3], 220)))
-        nvgFill(vg)
-    end
-
-    -- 标题
-    local titleY = h * 0.22
+    -- 标题和副标题已包含在背景图中，不再绘制文字
     nvgFontFaceId(vg, fontNormal)
 
-    -- 标题阴影
-    nvgFontSize(vg, S(36))
-    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-    nvgFillColor(vg, nvgRGBA(0, 0, 0, 120))
-    nvgText(vg, w / 2 + S(2), titleY + S(2), "疯狂弹珠", nil)
-
-    -- 标题主体
-    nvgFillColor(vg, nvgRGBA(255, 220, 80, 255))
-    nvgText(vg, w / 2, titleY, "疯狂弹珠", nil)
-
-    -- 副标题
-    nvgFontSize(vg, S(14))
-    nvgFillColor(vg, nvgRGBA(160, 180, 220, 200))
-    nvgText(vg, w / 2, titleY + S(32), "弹珠掉落 · 收集金币 · 挑战轮次", nil)
-
-    -- 双按钮：继续游戏 + 新游戏
+    -- 按钮布局（参考图模式：大主按钮 + 下方并排小按钮）
     local isLoading = gameState.loading
     local hasSave = gameState.hasSave
-    local btnW = S(160)
-    local btnH = S(48)
-    local btnGap = S(16)
-    local btnX = (w - btnW) / 2
-    local totalH = btnH * 3 + btnGap * 2
-    local startY = h * 0.50 - totalH / 2
     local pulse = 0.85 + 0.15 * math.sin(time * 3)
 
-    -- ---- 新游戏按钮（上方） ----
-    local newY = startY
-    local newEnabled = not isLoading
+    -- 布局尺寸
+    local bigBtnW = S(220)       -- 大按钮宽度（接近全屏宽）
+    local bigBtnH = S(56)        -- 大按钮高度
+    local smallBtnW = S(102)     -- 小按钮宽度
+    local smallBtnH = S(44)      -- 小按钮高度
+    local rowGap = S(12)         -- 行间距
+    local colGap = S(12)         -- 列间距
+    local bottomPad = S(70)      -- 底部留白
 
-    nvgBeginPath(vg)
-    nvgRoundedRect(vg, btnX, newY, btnW, btnH, S(12))
-    if newEnabled then
-        nvgFillColor(vg, nvgRGBA(50, 55, 75, 220))
-    else
-        nvgFillColor(vg, nvgRGBA(40, 50, 70, 180))
-    end
-    nvgFill(vg)
+    -- 三行总高度：大按钮 + 间距 + 小按钮行 + 间距 + 小按钮行
+    local totalH = bigBtnH + rowGap + smallBtnH + rowGap + smallBtnH
+    local startY = h - totalH - bottomPad
 
-    nvgBeginPath(vg)
-    nvgRoundedRect(vg, btnX, newY, btnW, btnH, S(12))
-    if newEnabled then
-        nvgStrokeColor(vg, nvgRGBA(100, 120, 180, 180))
-    else
-        nvgStrokeColor(vg, nvgRGBA(60, 70, 100, 120))
-    end
-    nvgStrokeWidth(vg, S(2))
-    nvgStroke(vg)
+    -- ==== 第一行：继续游戏 / 新游戏（大按钮，居中） ====
+    local bigX = (w - bigBtnW) / 2
+    local bigY = startY
 
-    nvgFontSize(vg, S(20))
-    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-    if newEnabled then
-        nvgFillColor(vg, nvgRGBA(200, 210, 240, 230))
-    else
-        nvgFillColor(vg, nvgRGBA(100, 110, 140, 150))
-    end
-    nvgText(vg, w / 2, newY + btnH / 2, "新游戏", nil)
+    -- 有存档时大按钮是"继续游戏"，无存档时是"新游戏"
+    local bigLabel = hasSave and "继续游戏" or "新游戏"
+    local bigEnabled = hasSave and (not isLoading) or (not isLoading)
 
-    -- ---- 继续游戏按钮（下方） ----
-    local contY = startY + btnH + btnGap
-    local contEnabled = hasSave and not isLoading
-
-    if contEnabled then
+    if imgBtnBlue ~= 0 then
+        local alpha = bigEnabled and 1.0 or 0.4
+        -- 脉冲发光底层（有存档时继续游戏闪烁）
+        if bigEnabled and hasSave then
+            nvgBeginPath(vg)
+            nvgRect(vg, bigX - S(4), bigY - S(4), bigBtnW + S(8), bigBtnH + S(8))
+            nvgFillPaint(vg, nvgImagePattern(vg, bigX - S(4), bigY - S(4), bigBtnW + S(8), bigBtnH + S(8), 0, imgBtnBlue, 0.3 * pulse))
+            nvgFill(vg)
+        end
         nvgBeginPath(vg)
-        nvgRoundedRect(vg, btnX - S(4), contY - S(4), btnW + S(8), btnH + S(8), S(16))
-        nvgFillColor(vg, nvgRGBA(60, 120, 220, math.floor(60 * pulse)))
+        nvgRect(vg, bigX, bigY, bigBtnW, bigBtnH)
+        nvgFillPaint(vg, nvgImagePattern(vg, bigX, bigY, bigBtnW, bigBtnH, 0, imgBtnBlue, alpha))
         nvgFill(vg)
     end
 
-    nvgBeginPath(vg)
-    nvgRoundedRect(vg, btnX, contY, btnW, btnH, S(12))
-    if contEnabled then
-        nvgFillPaint(vg, nvgLinearGradient(vg, btnX, contY, btnX, contY + btnH,
-            nvgRGBA(50, 100, 200, 240),
-            nvgRGBA(30, 70, 160, 240)))
-    else
-        nvgFillColor(vg, nvgRGBA(40, 50, 70, 180))
-    end
-    nvgFill(vg)
-
-    nvgBeginPath(vg)
-    nvgRoundedRect(vg, btnX, contY, btnW, btnH, S(12))
-    if contEnabled then
-        nvgStrokeColor(vg, nvgRGBA(100, 160, 255, math.floor(200 * pulse)))
-    else
-        nvgStrokeColor(vg, nvgRGBA(60, 70, 100, 120))
-    end
-    nvgStrokeWidth(vg, S(2))
-    nvgStroke(vg)
-
-    nvgFontSize(vg, S(22))
+    nvgFontSize(vg, S(24))
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
     if isLoading then
         local dots = string.rep(".", math.floor(time * 2) % 4)
         nvgFillColor(vg, nvgRGBA(160, 170, 200, 200))
-        nvgText(vg, w / 2, contY + btnH / 2, "加载中" .. dots, nil)
-    elseif contEnabled then
+        nvgText(vg, w / 2, bigY + bigBtnH / 2, "加载中" .. dots, nil)
+    elseif bigEnabled then
         nvgFillColor(vg, nvgRGBA(255, 255, 255, 255))
-        nvgText(vg, w / 2, contY + btnH / 2, "继续游戏", nil)
+        nvgText(vg, w / 2, bigY + bigBtnH / 2, bigLabel, nil)
     else
         nvgFillColor(vg, nvgRGBA(100, 110, 140, 150))
-        nvgText(vg, w / 2, contY + btnH / 2, "继续游戏", nil)
+        nvgText(vg, w / 2, bigY + bigBtnH / 2, bigLabel, nil)
     end
 
-    -- 存储按钮区域供点击检测
-    M.menuNewGameRect = { x = btnX, y = newY, w = btnW, h = btnH }
-    M.menuContinueRect = { x = btnX, y = contY, w = btnW, h = btnH }
+    -- 大按钮的点击区域：有存档→继续游戏，无存档→新游戏
+    if hasSave then
+        M.menuContinueRect = { x = bigX, y = bigY, w = bigBtnW, h = bigBtnH }
+        -- 无存档时继续按钮不可点
+    else
+        M.menuNewGameRect = { x = bigX, y = bigY, w = bigBtnW, h = bigBtnH }
+    end
 
-    -- ---- 符文按钮（第三个） ----
-    local runeY = startY + (btnH + btnGap) * 2
+    -- ==== 第二行：新游戏 | 符文（并排，有存档时）/ 放置模式 | 符文（无存档时） ====
+    local row2Y = startY + bigBtnH + rowGap
+    local row2TotalW = smallBtnW * 2 + colGap
+    local row2X = (w - row2TotalW) / 2
+    local leftX = row2X
+    local rightX = row2X + smallBtnW + colGap
+
+    if hasSave then
+        -- 左边：新游戏
+        local newEnabled = not isLoading
+        if imgBtnBlue ~= 0 then
+            local alpha = newEnabled and 1.0 or 0.4
+            nvgBeginPath(vg)
+            nvgRect(vg, leftX, row2Y, smallBtnW, smallBtnH)
+            nvgFillPaint(vg, nvgImagePattern(vg, leftX, row2Y, smallBtnW, smallBtnH, 0, imgBtnBlue, alpha))
+            nvgFill(vg)
+        end
+        nvgFontSize(vg, S(18))
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, newEnabled and nvgRGBA(200, 210, 240, 230) or nvgRGBA(100, 110, 140, 150))
+        nvgText(vg, leftX + smallBtnW / 2, row2Y + smallBtnH / 2, "新游戏", nil)
+        M.menuNewGameRect = { x = leftX, y = row2Y, w = smallBtnW, h = smallBtnH }
+    else
+        -- 无存档时左边：放置模式
+        if imgBtnGreen ~= 0 then
+            nvgBeginPath(vg)
+            nvgRect(vg, leftX, row2Y, smallBtnW, smallBtnH)
+            nvgFillPaint(vg, nvgImagePattern(vg, leftX, row2Y, smallBtnW, smallBtnH, 0, imgBtnGreen, 1.0))
+            nvgFill(vg)
+        end
+        nvgFontSize(vg, S(18))
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBA(120, 255, 180, 255))
+        nvgText(vg, leftX + smallBtnW / 2, row2Y + smallBtnH / 2, "放置模式", nil)
+        M.menuIdleRect = { x = leftX, y = row2Y, w = smallBtnW, h = smallBtnH }
+    end
+
+    -- 右边：符文
     local essenceCount = gameState.runeEssence or 0
-    local runePulse = 0.7 + 0.3 * math.abs(math.sin(time * 1.5))
-
-    nvgBeginPath(vg)
-    nvgRoundedRect(vg, btnX, runeY, btnW, btnH, S(12))
-    nvgFillPaint(vg, nvgLinearGradient(vg, btnX, runeY, btnX, runeY + btnH,
-        nvgRGBA(60, 30, 100, 230),
-        nvgRGBA(40, 20, 80, 230)))
-    nvgFill(vg)
-
-    nvgBeginPath(vg)
-    nvgRoundedRect(vg, btnX, runeY, btnW, btnH, S(12))
-    nvgStrokeColor(vg, nvgRGBA(160, 100, 255, math_floor(180 * runePulse)))
-    nvgStrokeWidth(vg, S(2))
-    nvgStroke(vg)
-
-    nvgFontSize(vg, S(20))
+    if imgBtnPurple ~= 0 then
+        nvgBeginPath(vg)
+        nvgRect(vg, rightX, row2Y, smallBtnW, smallBtnH)
+        nvgFillPaint(vg, nvgImagePattern(vg, rightX, row2Y, smallBtnW, smallBtnH, 0, imgBtnPurple, 1.0))
+        nvgFill(vg)
+    end
+    nvgFontSize(vg, S(18))
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
     nvgFillColor(vg, nvgRGBA(200, 160, 255, 255))
     if essenceCount > 0 then
-        -- 画 "符文" 偏左，然后画图标+数字偏右
-        local midX = w / 2
-        local midY = runeY + btnH / 2
+        local midX = rightX + smallBtnW / 2
+        local midY = row2Y + smallBtnH / 2
         local countStr = tostring(essenceCount)
         local gap = S(6)
-        local icoSz = S(16)
-        -- 测量文字宽度
+        local icoSz = S(14)
         nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
         local labelW = nvgTextBounds(vg, 0, 0, "符文", nil)
         local countW = nvgTextBounds(vg, 0, 0, countStr, nil)
-        local totalW = labelW + gap + icoSz + S(2) + countW
-        local startX = midX - totalW / 2
-        nvgText(vg, startX, midY, "符文", nil)
-        -- 小图标
+        local totalW2 = labelW + gap + icoSz + S(2) + countW
+        local startX2 = midX - totalW2 / 2
+        nvgText(vg, startX2, midY, "符文", nil)
         local essenceImg = GetRuneIcon(vg, "image/rune_essence_20260409140302.png")
-        local icoX = startX + labelW + gap
+        local icoX = startX2 + labelW + gap
         local icoY = midY - icoSz / 2
         nvgBeginPath(vg)
         nvgRect(vg, icoX, icoY, icoSz, icoSz)
         nvgFillPaint(vg, nvgImagePattern(vg, icoX, icoY, icoSz, icoSz, 0, essenceImg, 1.0))
         nvgFill(vg)
-        -- 数字
         nvgFillColor(vg, nvgRGBA(200, 160, 255, 255))
         nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
         nvgText(vg, icoX + icoSz + S(2), midY, countStr, nil)
     else
         nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-        nvgText(vg, w / 2, runeY + btnH / 2, "符文", nil)
+        nvgText(vg, rightX + smallBtnW / 2, row2Y + smallBtnH / 2, "符文", nil)
+    end
+    M.menuRuneRect = { x = rightX, y = row2Y, w = smallBtnW, h = smallBtnH }
+
+    -- ==== 第三行：放置模式（有存档时）/ 继续游戏禁用占位（无存档时隐藏） ====
+    local row3Y = row2Y + smallBtnH + rowGap
+
+    if hasSave then
+        -- 有存档：放置模式居中
+        local idleW = bigBtnW  -- 和大按钮同宽
+        local idleX = (w - idleW) / 2
+        if imgBtnGreen ~= 0 then
+            nvgBeginPath(vg)
+            nvgRect(vg, idleX, row3Y, idleW, smallBtnH)
+            nvgFillPaint(vg, nvgImagePattern(vg, idleX, row3Y, idleW, smallBtnH, 0, imgBtnGreen, 1.0))
+            nvgFill(vg)
+        end
+        nvgFontSize(vg, S(18))
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBA(120, 255, 180, 255))
+        nvgText(vg, w / 2, row3Y + smallBtnH / 2, "放置模式", nil)
+        M.menuIdleRect = { x = idleX, y = row3Y, w = idleW, h = smallBtnH }
+    else
+        -- 无存档时不显示继续游戏，把rect设为不可点区域
+        M.menuContinueRect = { x = -100, y = -100, w = 0, h = 0 }
     end
 
-    M.menuRuneRect = { x = btnX, y = runeY, w = btnW, h = btnH }
-
-    -- 底部提示
-    local tipAlpha = math.floor(120 + 80 * math.sin(time * 2))
-    nvgFontSize(vg, S(12))
-    nvgFillColor(vg, nvgRGBA(140, 160, 200, tipAlpha))
-    nvgText(vg, w / 2, h * 0.78, "投放弹珠 · 撞击钉子 · 落入口袋得分", nil)
+    -- 底部提示已移除
 
     -- ==== 新游戏确认弹窗 ====
     if gameState.showNewGameConfirm then

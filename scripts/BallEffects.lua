@@ -119,8 +119,7 @@ local _listBuf2 = {}      -- GetLandingMult 的 multBase 专用
 -- ============================================================================
 
 --- 计算球的实际价值
---- base = baseValue × 里程碑倍率 × level
---- 里程碑: 每4级触发一次, 倍率 = 4^floor(level/4)
+--- base = baseValue × level（纯线性）
 --- 加算基础: multi_value
 --- 额外基础: ball_polish（弹珠打磨，固定加值）
 --- 加算最终: ball_refine（弹珠精炼，百分比最终加成）
@@ -128,9 +127,7 @@ local _listBuf2 = {}      -- GetLandingMult 的 multBase 专用
 ---@param level number 球等级
 ---@return number 实际价值（取整）
 function M.GetBallValue(typeIndex, level)
-    local milestones = math_floor(level / 8)
-    local milestoneMult = (milestones > 0) and (BigNum.new(2) ^ milestones) or BigNum.new(1)
-    local base = BigNum.new(Config.BALL_TYPES[typeIndex].baseValue) * milestoneMult * level
+    local base = BigNum.new(Config.BALL_TYPES[typeIndex].baseValue) * level
     -- calcFormula 返回 BigNum，需要用被补丁过的 math.floor 来处理
     -- 符文增值加成（rune_value: 全部球基础价值+8%/级）
     -- 附魔增值加成（ball_value: 加算，每级+100%）
@@ -342,7 +339,7 @@ function M.GetLandingMult(ball)
     -- 副作用：陨石强化震屏
     local meteorLv = Upgrades.GetEffectLevel("meteor_boost")
     if meteorLv >= 3 then
-        local shakeStr = math_min(1.5, 0.2 + meteorLv * 0.12)
+        local shakeStr = math_min(0.6, 0.1 + meteorLv * 0.06)
         gameState.screenShake = math_max(gameState.screenShake or 0, shakeStr)
     end
 
@@ -527,7 +524,8 @@ function M.ApplyLuckyBounce(ball, dt, bottomY)
         local sMult = Slots.GetSlotMult(gameState.slots[si])
         if sMult > bestMult then
             bestMult = sMult
-            bestCenterX = gameState.boardLeft + (si - 0.5) * gameState.slotWidth
+            bestCenterX = gameState.slotCenters and gameState.slotCenters[si]
+                or (gameState.boardLeft + (si - 0.5) * gameState.slotWidth)
         end
     end
 

@@ -13,6 +13,11 @@ local gameState = State.gameState
 
 local P = {}
 
+-- 卡片图片资源
+local IMG_CARD_NORMAL    = "image/ui_card_normal_20260517160219.png"
+local IMG_CARD_HIGHLIGHT = "image/ui_card_highlight_20260517160012.png"
+local CARD_SLICE = { top = 16, right = 16, bottom = 16, left = 16 }
+
 --- 创建一键升级按钮
 ---@param cb table 回调表 { PlayClickSfx }
 ---@return table UI 面板
@@ -24,10 +29,10 @@ function P.CreateBulkUpgradeButton(cb)
         id = "bulkUpgradeBtn",
         width = "100%",
         flexDirection = "row",
-        padding = { 8, 10, 8, 10 },
-        backgroundColor = { 40, 70, 55, 240 },
-        borderColor = { 80, 180, 100, 200 },
-        borderWidth = 1.5, borderRadius = 10,
+        padding = { 10, 12, 10, 12 },
+        backgroundImage = IMG_CARD_HIGHLIGHT,
+        backgroundFit = "sliced",
+        backgroundSlice = CARD_SLICE,
         alignItems = "center", justifyContent = "center",
         gap = 6,
         pointerEvents = "auto",
@@ -238,13 +243,17 @@ function P.CreateDrawButton(cb)
             },
     })
 
+    local drawCanAct = not allDrawn and canAfford
+    local drawCardImg = IMG_CARD_HIGHLIGHT
+
     return UI.Panel {
         width = "100%",
         flexDirection = "row",
-        padding = { 8, 10, 8, 10 },
-        backgroundColor = bgColor,
-        borderColor = accentColor,
-        borderWidth = borderW, borderRadius = 10,
+        padding = { 10, 12, 10, 12 },
+        backgroundImage = drawCardImg,
+        backgroundFit = "sliced",
+        backgroundSlice = CARD_SLICE,
+        opacity = drawCanAct and 1.0 or 0.55,
         alignItems = "center", gap = 10,
         pointerEvents = "auto",
         onClick = function()
@@ -269,7 +278,7 @@ function P.CreateDrawButton(cb)
                 }
             },
             UI.Panel {
-                flexGrow = 1, gap = 1, pointerEvents = "none",
+                flexGrow = 1, flexShrink = 1, gap = 1, pointerEvents = "none",
                 children = {
                     UI.Label {
                         text = "抽取效果",
@@ -286,6 +295,7 @@ function P.CreateDrawButton(cb)
                 }
             },
             UI.Panel {
+                flexShrink = 0,
                 flexDirection = "row",
                 alignItems = "center", gap = 6,
                 children = rightChildren,
@@ -363,16 +373,17 @@ function P.CreateEffectItem(cb, eff)
         }
     })
 
+    local effCardImg = IMG_CARD_HIGHLIGHT
+
     return UI.Panel {
         id = "eff_" .. eff.id,
         width = "100%",
         flexDirection = "row",
-        padding = { 6, 8, 6, 8 },
-        backgroundColor = { eff.color[1], eff.color[2], eff.color[3], 25 },
-        borderColor = canAfford
-            and { eff.color[1], eff.color[2], eff.color[3], 200 }
-            or { eff.color[1], eff.color[2], eff.color[3], 60 },
-        borderWidth = canAfford and 1.5 or 1, borderRadius = 8,
+        padding = { 8, 10, 8, 10 },
+        backgroundImage = effCardImg,
+        backgroundFit = "sliced",
+        backgroundSlice = CARD_SLICE,
+        opacity = canAfford and 1.0 or 0.55,
         alignItems = "center", gap = 8,
         pointerEvents = "auto",
         onClick = function()
@@ -395,7 +406,7 @@ function P.CreateEffectItem(cb, eff)
                 }
             },
             UI.Panel {
-                flexGrow = 1, gap = 1, pointerEvents = "none",
+                flexGrow = 1, flexShrink = 1, gap = 1, pointerEvents = "none",
                 children = {
                     UI.Label {
                         text = "[" .. qualityTier.name .. "] " .. nameText .. "  Lv." .. level,
@@ -410,6 +421,7 @@ function P.CreateEffectItem(cb, eff)
                 }
             },
             UI.Panel {
+                flexShrink = 0,
                 flexDirection = "row",
                 alignItems = "center", gap = 4,
                 children = rightChildren,

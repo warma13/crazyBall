@@ -18,7 +18,7 @@ local SecureValue = require("SecureValue")
 
 local SAVE_FILE = "save.json"
 local CLOUD_KEY = "save_data"
-local SAVE_VERSION = 3  -- 当前存档版本号（v3: 添加签名）
+local SAVE_VERSION = 4  -- 当前存档版本号（v4: 放置模式字段）
 local SIGN_SALT = "cRz7$pBm!2xQ"  -- 签名盐值
 local CLOUD_THROTTLE = 10  -- 云端写入最小间隔（秒）
 local RANK_CHECK_INTERVAL = 15  -- 排行榜对比间隔（秒）
@@ -34,6 +34,13 @@ local rankCheckTimer = 0
 --- 从 gameState 提取需要持久化的字段
 function M.Serialize()
     gameState.saveCount = (gameState.saveCount or 0) + 1
+    -- 保存前同步当前关卡的球币到 idleLevelData
+    State.FlushIdleEarnings()
+    local lv = gameState.idleLevel
+    if gameState.idleLevelData[lv] then
+        gameState.idleLevelData[lv].ballCoins = gameState.idleBallCoins
+        gameState.idleLevelData[lv].ballsDropped = gameState.idleBallsDropped
+    end
     return {
         version = SAVE_VERSION,
         saveCount = gameState.saveCount,
@@ -61,8 +68,31 @@ function M.Serialize()
         runeEssence = gameState.runeEssence or 0,
         runeLevels = M._CopyTable(gameState.runeLevels or {}),
 
-        -- 附魔系统（局内持久化，新游戏重置）
-        ballEnchantments = M._CopyEnchantments(gameState.ballEnchantments),
+        -- 放置模式
+        idleCoins = BigNum.serialize(gameState.idleCoins),
+        idleTotalEarned = BigNum.serialize(gameState.idleTotalEarned),
+        idleBallLevels = M._CopyArray(gameState.idleBallLevels),
+        idleSelectedBall = gameState.idleSelectedBall,
+        idleSlots = M._CopySlots(gameState.idleSlots),
+        idleDrawnEffects = M._CopyTable(gameState.idleDrawnEffects),
+        idleDrawCount = gameState.idleDrawCount,
+        idleDrawPity = gameState.idleDrawPity,
+        idlePrestigeCount = gameState.idlePrestigeCount,
+        idlePrestigeMult = gameState.idlePrestigeMult,
+        idleBallAbilityLevels = M._CopyTable(gameState.idleBallAbilityLevels),
+        idleUpgradeLevels = M._CopyTable(gameState.idleUpgradeLevels),
+        idleSkills = M._CopyTable(gameState.idleSkills),
+        idleSkillPickCount = gameState.idleSkillPickCount,
+
+        -- 关卡系统
+        idleLevel = gameState.idleLevel,
+        idleMaxUnlockedLevel = gameState.idleMaxUnlockedLevel,
+        idleBallsDropped = gameState.idleBallsDropped,
+        idleBallCoins = BigNum.serialize(gameState.idleBallCoins),
+        idleTotalBallCoins = BigNum.serialize(gameState.idleTotalBallCoins),
+        idleGlobalBallValueBonus = gameState.idleGlobalBallValueBonus,
+        idleGlobalSlotMultBonus = gameState.idleGlobalSlotMultBonus,
+        idleLevelData = M._SerializeLevelData(gameState.idleLevelData),
 
         -- 局内状态（支持中途保存恢复）
         roundTimeLeft = gameState.roundTimeLeft,
@@ -157,15 +187,61 @@ function M.Deserialize(data)
         gameState.runeLevels = M._CopyTable(data.runeLevels)
     end
 
-    -- 附魔系统
-    if data.ballEnchantments then
-        gameState.ballEnchantments = {}
-        for k, v in pairs(data.ballEnchantments) do
-            local idx = tonumber(k) or k
-            if type(v) == "table" then
-                gameState.ballEnchantments[idx] = M._CopyTable(v)
-            end
+    -- 放置模式（v4+）
+    if data.idleCoins then
+        gameState.idleCoins = BigNum.deserialize(data.idleCoins)
+    end
+    if data.idleTotalEarned then
+        gameState.idleTotalEarned = BigNum.deserialize(data.idleTotalEarned)
+    end
+    if data.idleBallLevels then
+        local ballCount = #Config.BALL_TYPES
+        for i = 1, ballCount do
+            gameState.idleBallLevels[i] = data.idleBallLevels[i] or 0
         end
+    end
+    gameState.idleSelectedBall = data.idleSelectedBall or 1
+    if data.idleSlots then
+        gameState.idleSlots = {}
+        for i = 1, #data.idleSlots do
+            gameState.idleSlots[i] = {
+                kind = data.idleSlots[i].kind or "good",
+                level = data.idleSlots[i].level or 2,
+            }
+        end
+    end
+    if data.idleDrawnEffects then
+        gameState.idleDrawnEffects = M._CopyTable(data.idleDrawnEffects)
+    end
+    gameState.idleDrawCount = data.idleDrawCount or 0
+    gameState.idleDrawPity = data.idleDrawPity or 0
+    gameState.idlePrestigeCount = data.idlePrestigeCount or 0
+    gameState.idlePrestigeMult = data.idlePrestigeMult or 1.0
+    if data.idleBallAbilityLevels then
+        gameState.idleBallAbilityLevels = M._CopyTable(data.idleBallAbilityLevels)
+    end
+    if data.idleUpgradeLevels then
+        gameState.idleUpgradeLevels = M._CopyTable(data.idleUpgradeLevels)
+    end
+    if data.idleSkills then
+        gameState.idleSkills = M._CopyTable(data.idleSkills)
+    end
+    gameState.idleSkillPickCount = data.idleSkillPickCount or 0
+
+    -- 关卡系统恢复
+    gameState.idleLevel = data.idleLevel or 1
+    gameState.idleMaxUnlockedLevel = data.idleMaxUnlockedLevel or 1
+    gameState.idleBallsDropped = data.idleBallsDropped or 0
+    if data.idleBallCoins then
+        gameState.idleBallCoins = BigNum.deserialize(data.idleBallCoins)
+    end
+    if data.idleTotalBallCoins then
+        gameState.idleTotalBallCoins = BigNum.deserialize(data.idleTotalBallCoins)
+    end
+    gameState.idleGlobalBallValueBonus = data.idleGlobalBallValueBonus or 0
+    gameState.idleGlobalSlotMultBonus = data.idleGlobalSlotMultBonus or 0
+    if data.idleLevelData then
+        gameState.idleLevelData = M._DeserializeLevelData(data.idleLevelData)
     end
 
     -- 局内状态恢复
@@ -436,18 +512,6 @@ function M._CopyTable(t)
     return copy
 end
 
---- 深拷贝附魔数据 { [ballIndex] = { [enchantId] = level } }
-function M._CopyEnchantments(enchants)
-    if type(enchants) ~= "table" then return {} end
-    local copy = {}
-    for k, v in pairs(enchants) do
-        if type(v) == "table" then
-            copy[k] = M._CopyTable(v)
-        end
-    end
-    return copy
-end
-
 function M._CopySlots(slots)
     local copy = {}
     for i, s in ipairs(slots) do
@@ -506,6 +570,49 @@ function M._SerializePegTimers(pegs)
     local out = {}
     for i = 1, #pegs do
         out[i] = pegs[i].hitTimer or 0
+    end
+    return out
+end
+
+--- 序列化 idleLevelData（每关独立数据，含 ballCoins）
+function M._SerializeLevelData(levelData)
+    if not levelData then return {} end
+    local out = {}
+    for lv, ld in pairs(levelData) do
+        out[tostring(lv)] = {
+            slots = M._CopySlots(ld.slots or {}),
+            ballsDropped = ld.ballsDropped or 0,
+            levelBallCoins = BigNum.serialize(ld.levelBallCoins or BigNum.new(0)),
+            ballCoins = BigNum.serialize(ld.ballCoins or BigNum.new(0)),
+        }
+    end
+    return out
+end
+
+--- 反序列化 idleLevelData
+function M._DeserializeLevelData(data)
+    if not data then return {} end
+    local out = {}
+    for lvStr, ld in pairs(data) do
+        local lv = tonumber(lvStr)
+        if lv then
+            local slots = {}
+            if ld.slots then
+                for i = 1, #ld.slots do
+                    slots[i] = {
+                        kind = ld.slots[i].kind or "good",
+                        level = ld.slots[i].level or 2,
+                        drops = ld.slots[i].drops or 0,
+                    }
+                end
+            end
+            out[lv] = {
+                slots = slots,
+                ballsDropped = ld.ballsDropped or 0,
+                levelBallCoins = BigNum.deserialize(ld.levelBallCoins or 0),
+                ballCoins = BigNum.deserialize(ld.ballCoins or 0),
+            }
+        end
     end
     return out
 end
