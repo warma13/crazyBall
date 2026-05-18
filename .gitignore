@@ -1,0 +1,13 @@
+# 忽略所有
+*
+
+# 只追踪脚本和资源
+!scripts/
+!scripts/**
+!assets/
+!assets/**
+!.project/
+!.project/**
+
+# 保留 gitignore 自身
+!.gitignore
