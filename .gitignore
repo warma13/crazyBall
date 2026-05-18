@@ -6,8 +6,5 @@
 !scripts/**
 !assets/
 !assets/**
-!.project/
-!.project/**
-
 # 保留 gitignore 自身
 !.gitignore
