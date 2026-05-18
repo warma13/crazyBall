@@ -27,7 +27,7 @@ M.dropRingProgress = 1  -- 0~1，1 表示就绪
 -- UI 背景图路径
 local IMG = {
     TAB_ACTIVE = "image/ui_tab_active_20260517160019.png",
-    PANEL_BG   = "image/ui_panel_bg_20260517160115.png",
+    PANEL_BG   = "image/ui_panel_bg_v3_20260518184142.png",
     BOTTOM_BAR = "image/ui_bottom_bar_20260517184541.png",
 }
 local TAB_SLICE   = { top = 12, right = 12, bottom = 12, left = 12 }

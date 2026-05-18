@@ -1045,142 +1045,167 @@ function M.DrawMenuScreen(vg, w, h)
     -- 标题和副标题已包含在背景图中，不再绘制文字
     nvgFontFaceId(vg, fontNormal)
 
-    -- 双按钮：继续游戏 + 新游戏
+    -- 按钮布局（参考图模式：大主按钮 + 下方并排小按钮）
     local isLoading = gameState.loading
     local hasSave = gameState.hasSave
-    local btnW = S(160)
-    local btnH = S(48)
-    local btnGap = S(16)
-    local btnX = (w - btnW) / 2
-    local totalH = btnH * 4 + btnGap * 3
-    local startY = h * 0.50 - totalH / 2
     local pulse = 0.85 + 0.15 * math.sin(time * 3)
 
-    -- ---- 新游戏按钮（上方） ----
-    local newY = startY
-    local newEnabled = not isLoading
+    -- 布局尺寸
+    local bigBtnW = S(220)       -- 大按钮宽度（接近全屏宽）
+    local bigBtnH = S(56)        -- 大按钮高度
+    local smallBtnW = S(102)     -- 小按钮宽度
+    local smallBtnH = S(44)      -- 小按钮高度
+    local rowGap = S(12)         -- 行间距
+    local colGap = S(12)         -- 列间距
+    local bottomPad = S(70)      -- 底部留白
 
-    -- 图片按钮边框
+    -- 三行总高度：大按钮 + 间距 + 小按钮行 + 间距 + 小按钮行
+    local totalH = bigBtnH + rowGap + smallBtnH + rowGap + smallBtnH
+    local startY = h - totalH - bottomPad
+
+    -- ==== 第一行：继续游戏 / 新游戏（大按钮，居中） ====
+    local bigX = (w - bigBtnW) / 2
+    local bigY = startY
+
+    -- 有存档时大按钮是"继续游戏"，无存档时是"新游戏"
+    local bigLabel = hasSave and "继续游戏" or "新游戏"
+    local bigEnabled = hasSave and (not isLoading) or (not isLoading)
+
     if imgBtnBlue ~= 0 then
-        local alpha = newEnabled and 1.0 or 0.4
-        nvgBeginPath(vg)
-        nvgRect(vg, btnX, newY, btnW, btnH)
-        nvgFillPaint(vg, nvgImagePattern(vg, btnX, newY, btnW, btnH, 0, imgBtnBlue, alpha))
-        nvgFill(vg)
-    end
-
-    nvgFontSize(vg, S(20))
-    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-    if newEnabled then
-        nvgFillColor(vg, nvgRGBA(200, 210, 240, 230))
-    else
-        nvgFillColor(vg, nvgRGBA(100, 110, 140, 150))
-    end
-    nvgText(vg, w / 2, newY + btnH / 2, "新游戏", nil)
-
-    -- ---- 继续游戏按钮（下方） ----
-    local contY = startY + btnH + btnGap
-    local contEnabled = hasSave and not isLoading
-
-    -- 图片按钮边框（继续游戏用蓝色大按钮）
-    if imgBtnBlue ~= 0 then
-        local alpha = contEnabled and 1.0 or 0.4
-        -- 脉冲发光底层
-        if contEnabled then
+        local alpha = bigEnabled and 1.0 or 0.4
+        -- 脉冲发光底层（有存档时继续游戏闪烁）
+        if bigEnabled and hasSave then
             nvgBeginPath(vg)
-            nvgRect(vg, btnX - S(4), contY - S(4), btnW + S(8), btnH + S(8))
-            nvgFillPaint(vg, nvgImagePattern(vg, btnX - S(4), contY - S(4), btnW + S(8), btnH + S(8), 0, imgBtnBlue, 0.3 * pulse))
+            nvgRect(vg, bigX - S(4), bigY - S(4), bigBtnW + S(8), bigBtnH + S(8))
+            nvgFillPaint(vg, nvgImagePattern(vg, bigX - S(4), bigY - S(4), bigBtnW + S(8), bigBtnH + S(8), 0, imgBtnBlue, 0.3 * pulse))
             nvgFill(vg)
         end
         nvgBeginPath(vg)
-        nvgRect(vg, btnX, contY, btnW, btnH)
-        nvgFillPaint(vg, nvgImagePattern(vg, btnX, contY, btnW, btnH, 0, imgBtnBlue, alpha))
+        nvgRect(vg, bigX, bigY, bigBtnW, bigBtnH)
+        nvgFillPaint(vg, nvgImagePattern(vg, bigX, bigY, bigBtnW, bigBtnH, 0, imgBtnBlue, alpha))
         nvgFill(vg)
     end
 
-    nvgFontSize(vg, S(22))
+    nvgFontSize(vg, S(24))
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
     if isLoading then
         local dots = string.rep(".", math.floor(time * 2) % 4)
         nvgFillColor(vg, nvgRGBA(160, 170, 200, 200))
-        nvgText(vg, w / 2, contY + btnH / 2, "加载中" .. dots, nil)
-    elseif contEnabled then
+        nvgText(vg, w / 2, bigY + bigBtnH / 2, "加载中" .. dots, nil)
+    elseif bigEnabled then
         nvgFillColor(vg, nvgRGBA(255, 255, 255, 255))
-        nvgText(vg, w / 2, contY + btnH / 2, "继续游戏", nil)
+        nvgText(vg, w / 2, bigY + bigBtnH / 2, bigLabel, nil)
     else
         nvgFillColor(vg, nvgRGBA(100, 110, 140, 150))
-        nvgText(vg, w / 2, contY + btnH / 2, "继续游戏", nil)
+        nvgText(vg, w / 2, bigY + bigBtnH / 2, bigLabel, nil)
     end
 
-    -- 存储按钮区域供点击检测
-    M.menuNewGameRect = { x = btnX, y = newY, w = btnW, h = btnH }
-    M.menuContinueRect = { x = btnX, y = contY, w = btnW, h = btnH }
+    -- 大按钮的点击区域：有存档→继续游戏，无存档→新游戏
+    if hasSave then
+        M.menuContinueRect = { x = bigX, y = bigY, w = bigBtnW, h = bigBtnH }
+        -- 无存档时继续按钮不可点
+    else
+        M.menuNewGameRect = { x = bigX, y = bigY, w = bigBtnW, h = bigBtnH }
+    end
 
-    -- ---- 符文按钮（第三个） ----
-    local runeY = startY + (btnH + btnGap) * 2
+    -- ==== 第二行：新游戏 | 符文（并排，有存档时）/ 放置模式 | 符文（无存档时） ====
+    local row2Y = startY + bigBtnH + rowGap
+    local row2TotalW = smallBtnW * 2 + colGap
+    local row2X = (w - row2TotalW) / 2
+    local leftX = row2X
+    local rightX = row2X + smallBtnW + colGap
+
+    if hasSave then
+        -- 左边：新游戏
+        local newEnabled = not isLoading
+        if imgBtnBlue ~= 0 then
+            local alpha = newEnabled and 1.0 or 0.4
+            nvgBeginPath(vg)
+            nvgRect(vg, leftX, row2Y, smallBtnW, smallBtnH)
+            nvgFillPaint(vg, nvgImagePattern(vg, leftX, row2Y, smallBtnW, smallBtnH, 0, imgBtnBlue, alpha))
+            nvgFill(vg)
+        end
+        nvgFontSize(vg, S(18))
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, newEnabled and nvgRGBA(200, 210, 240, 230) or nvgRGBA(100, 110, 140, 150))
+        nvgText(vg, leftX + smallBtnW / 2, row2Y + smallBtnH / 2, "新游戏", nil)
+        M.menuNewGameRect = { x = leftX, y = row2Y, w = smallBtnW, h = smallBtnH }
+    else
+        -- 无存档时左边：放置模式
+        if imgBtnGreen ~= 0 then
+            nvgBeginPath(vg)
+            nvgRect(vg, leftX, row2Y, smallBtnW, smallBtnH)
+            nvgFillPaint(vg, nvgImagePattern(vg, leftX, row2Y, smallBtnW, smallBtnH, 0, imgBtnGreen, 1.0))
+            nvgFill(vg)
+        end
+        nvgFontSize(vg, S(18))
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBA(120, 255, 180, 255))
+        nvgText(vg, leftX + smallBtnW / 2, row2Y + smallBtnH / 2, "放置模式", nil)
+        M.menuIdleRect = { x = leftX, y = row2Y, w = smallBtnW, h = smallBtnH }
+    end
+
+    -- 右边：符文
     local essenceCount = gameState.runeEssence or 0
-
-    -- 图片按钮边框（紫色）
     if imgBtnPurple ~= 0 then
         nvgBeginPath(vg)
-        nvgRect(vg, btnX, runeY, btnW, btnH)
-        nvgFillPaint(vg, nvgImagePattern(vg, btnX, runeY, btnW, btnH, 0, imgBtnPurple, 1.0))
+        nvgRect(vg, rightX, row2Y, smallBtnW, smallBtnH)
+        nvgFillPaint(vg, nvgImagePattern(vg, rightX, row2Y, smallBtnW, smallBtnH, 0, imgBtnPurple, 1.0))
         nvgFill(vg)
     end
-
-    nvgFontSize(vg, S(20))
+    nvgFontSize(vg, S(18))
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
     nvgFillColor(vg, nvgRGBA(200, 160, 255, 255))
     if essenceCount > 0 then
-        -- 画 "符文" 偏左，然后画图标+数字偏右
-        local midX = w / 2
-        local midY = runeY + btnH / 2
+        local midX = rightX + smallBtnW / 2
+        local midY = row2Y + smallBtnH / 2
         local countStr = tostring(essenceCount)
         local gap = S(6)
-        local icoSz = S(16)
-        -- 测量文字宽度
+        local icoSz = S(14)
         nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
         local labelW = nvgTextBounds(vg, 0, 0, "符文", nil)
         local countW = nvgTextBounds(vg, 0, 0, countStr, nil)
-        local totalW = labelW + gap + icoSz + S(2) + countW
-        local startX = midX - totalW / 2
-        nvgText(vg, startX, midY, "符文", nil)
-        -- 小图标
+        local totalW2 = labelW + gap + icoSz + S(2) + countW
+        local startX2 = midX - totalW2 / 2
+        nvgText(vg, startX2, midY, "符文", nil)
         local essenceImg = GetRuneIcon(vg, "image/rune_essence_20260409140302.png")
-        local icoX = startX + labelW + gap
+        local icoX = startX2 + labelW + gap
         local icoY = midY - icoSz / 2
         nvgBeginPath(vg)
         nvgRect(vg, icoX, icoY, icoSz, icoSz)
         nvgFillPaint(vg, nvgImagePattern(vg, icoX, icoY, icoSz, icoSz, 0, essenceImg, 1.0))
         nvgFill(vg)
-        -- 数字
         nvgFillColor(vg, nvgRGBA(200, 160, 255, 255))
         nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
         nvgText(vg, icoX + icoSz + S(2), midY, countStr, nil)
     else
         nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-        nvgText(vg, w / 2, runeY + btnH / 2, "符文", nil)
+        nvgText(vg, rightX + smallBtnW / 2, row2Y + smallBtnH / 2, "符文", nil)
     end
+    M.menuRuneRect = { x = rightX, y = row2Y, w = smallBtnW, h = smallBtnH }
 
-    M.menuRuneRect = { x = btnX, y = runeY, w = btnW, h = btnH }
+    -- ==== 第三行：放置模式（有存档时）/ 继续游戏禁用占位（无存档时隐藏） ====
+    local row3Y = row2Y + smallBtnH + rowGap
 
-    -- ---- 放置模式按钮（第四个） ----
-    local idleY = startY + (btnH + btnGap) * 3
-
-    -- 图片按钮边框（绿色）
-    if imgBtnGreen ~= 0 then
-        nvgBeginPath(vg)
-        nvgRect(vg, btnX, idleY, btnW, btnH)
-        nvgFillPaint(vg, nvgImagePattern(vg, btnX, idleY, btnW, btnH, 0, imgBtnGreen, 1.0))
-        nvgFill(vg)
+    if hasSave then
+        -- 有存档：放置模式居中
+        local idleW = bigBtnW  -- 和大按钮同宽
+        local idleX = (w - idleW) / 2
+        if imgBtnGreen ~= 0 then
+            nvgBeginPath(vg)
+            nvgRect(vg, idleX, row3Y, idleW, smallBtnH)
+            nvgFillPaint(vg, nvgImagePattern(vg, idleX, row3Y, idleW, smallBtnH, 0, imgBtnGreen, 1.0))
+            nvgFill(vg)
+        end
+        nvgFontSize(vg, S(18))
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBA(120, 255, 180, 255))
+        nvgText(vg, w / 2, row3Y + smallBtnH / 2, "放置模式", nil)
+        M.menuIdleRect = { x = idleX, y = row3Y, w = idleW, h = smallBtnH }
+    else
+        -- 无存档时不显示继续游戏，把rect设为不可点区域
+        M.menuContinueRect = { x = -100, y = -100, w = 0, h = 0 }
     end
-
-    nvgFontSize(vg, S(20))
-    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-    nvgFillColor(vg, nvgRGBA(120, 255, 180, 255))
-    nvgText(vg, w / 2, idleY + btnH / 2, "放置模式", nil)
-
-    M.menuIdleRect = { x = btnX, y = idleY, w = btnW, h = btnH }
 
     -- 底部提示已移除
 

@@ -42,7 +42,7 @@ local ADS_ENABLED = true   -- 广告入口总开关
 
 -- UI 背景图路径（复用放置模式图片资源）
 local IMG = {
-    PANEL_BG   = "image/ui_panel_bg_20260517160115.png",
+    PANEL_BG   = "image/ui_panel_bg_v3_20260518184142.png",
     BOTTOM_BAR = "image/ui_bottom_bar_20260517184541.png",
     CARD_NORMAL    = "image/ui_card_normal_20260517160219.png",
     CARD_HIGHLIGHT = "image/ui_card_highlight_20260517160012.png",
@@ -169,7 +169,7 @@ function M.CreateUpgradePanel()
                 backgroundImage = IMG.PANEL_BG,
                 backgroundFit = "sliced",
                 backgroundSlice = PANEL_SLICE,
-                padding = { 20, 20, 14, 20 },
+                padding = { 30, 30, 24, 30 },
                 overflow = "hidden",
                 children = {
                     UI.ScrollView {
