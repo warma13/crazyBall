@@ -256,7 +256,8 @@ function Start()
     State.sfxBallDrop = cache:GetResource("Sound", "audio/sfx/ball_drop.ogg")
     State.sfxRoundSuccess = cache:GetResource("Sound", "audio/sfx/round_success.ogg")
     State.sfxRoundFail = cache:GetResource("Sound", "audio/sfx/round_fail.ogg")
-    State.sfxButtonClick = cache:GetResource("Sound", "audio/sfx/button_click.ogg")
+    State.sfxButtonClick = cache:GetResource("Sound", "audio/sfx/btn_click.ogg")
+    State.sfxButtonHover = cache:GetResource("Sound", "audio/sfx/btn_hover.ogg")
 
     -- BGM
     local bgmSound = cache:GetResource("Sound", "audio/bgm/bgm.ogg")
@@ -392,7 +393,7 @@ end
 local function StartGame()
     if gameState.loading then return end
     gameState.loading = true
-    Physics.PlaySfx(State.sfxButtonClick, 0.5)
+    Physics.PlaySfx(State.sfxButtonClick, 0.8)
 
     local localData = SaveSystem.LoadLocal()
 
@@ -423,6 +424,70 @@ local function HitRect(r, lx, ly)
     return lx >= r.x and lx <= r.x + r.w and ly >= r.y and ly <= r.y + r.h
 end
 
+-- ============================================================================
+-- 版本号编码/解码（用于排行榜版本比对）
+-- "v1.0.31" → 10031, "v2.1.5" → 20105
+-- ============================================================================
+local function EncodeVersion(verStr)
+    local major, minor, patch = verStr:match("v(%d+)%.(%d+)%.(%d+)")
+    if not major then return 0 end
+    return tonumber(major) * 10000 + tonumber(minor) * 100 + tonumber(patch)
+end
+
+local function DecodeVersion(code)
+    local major = math.floor(code / 10000)
+    local minor = math.floor((code % 10000) / 100)
+    local patch = code % 100
+    return string.format("v%d.%d.%d", major, minor, patch)
+end
+
+--- 检测版本更新（通过排行榜存储版本号）
+local function CheckVersionUpdate()
+    if gameState.announceChecking then return end
+    gameState.announceChecking = true
+    gameState.announceHasNewVer = false
+    gameState.announceRemoteVer = nil
+
+    local localCode = EncodeVersion(Renderer.GAME_VERSION)
+    print("[Announce] Local version: " .. Renderer.GAME_VERSION .. " code=" .. localCode)
+
+    -- 先上传本地版本号（排行榜按降序排，最大值排第一）
+    clientCloud:SetInt("version_code", localCode, "版本号", {
+        ok = function()
+            print("[Announce] Uploaded version_code=" .. localCode)
+        end,
+        error = function(code, reason)
+            print("[Announce] Upload version_code error: " .. tostring(reason))
+        end,
+    })
+
+    -- 拉取排行榜 top-1（最高版本号）
+    clientCloud:GetRankList("version_code", 0, 1, {
+        ok = function(rankList)
+            gameState.announceChecking = false
+            if #rankList > 0 then
+                local topItem = rankList[1]
+                local remoteCode = (topItem.iscore and topItem.iscore.version_code) or 0
+                print("[Announce] Remote top version_code=" .. remoteCode)
+                if remoteCode > localCode then
+                    -- 远端有更高版本
+                    gameState.announceHasNewVer = true
+                    gameState.announceRemoteVer = DecodeVersion(remoteCode)
+                    print("[Announce] New version detected: " .. gameState.announceRemoteVer)
+                else
+                    print("[Announce] Already up to date")
+                end
+            else
+                print("[Announce] No version data on leaderboard")
+            end
+        end,
+        error = function(code, reason)
+            gameState.announceChecking = false
+            print("[Announce] GetRankList error: " .. tostring(reason))
+        end,
+    })
+end
+
 --- HUD 点击检测（模块级避免每帧分配闭包）
 local function HandleHUDClick(lx, ly)
     if HitRect(Renderer.settingsBtnRect, lx, ly) then
@@ -443,7 +508,7 @@ local HandleMenuClick
 local function NewGame()
     if gameState.loading then return end
     gameState.loading = true
-    Physics.PlaySfx(State.sfxButtonClick, 0.5)
+    Physics.PlaySfx(State.sfxButtonClick, 0.8)
     State.ResetToInitial()
     gameState.loading = false
     -- 重建坑位布局
@@ -458,14 +523,26 @@ end
 
 --- 菜单点击检测实现（模块级，避免每帧分配闭包）
 HandleMenuClick = function(lx, ly)
-    -- 弹窗优先处理
+    -- 公告弹窗优先处理
+    if gameState.showAnnouncePanel then
+        if HitRect(Renderer.announceCloseRect, lx, ly) then
+            Physics.PlaySfx(State.sfxButtonClick, 0.8)
+            gameState.showAnnouncePanel = false
+        elseif not HitRect(Renderer.announceDlgRect, lx, ly) then
+            -- 点击卡片外部关闭
+            gameState.showAnnouncePanel = false
+        end
+        return  -- 弹窗打开时不响应底层按钮
+    end
+
+    -- 新游戏确认弹窗优先处理
     if gameState.showNewGameConfirm then
         if HitRect(Renderer.dlgConfirmRect, lx, ly) then
-            Physics.PlaySfx(State.sfxButtonClick, 0.5)
+            Physics.PlaySfx(State.sfxButtonClick, 0.8)
             gameState.showNewGameConfirm = false
             NewGame()
         elseif HitRect(Renderer.dlgCancelRect, lx, ly) then
-            Physics.PlaySfx(State.sfxButtonClick, 0.5)
+            Physics.PlaySfx(State.sfxButtonClick, 0.8)
             gameState.showNewGameConfirm = false
         end
         return  -- 弹窗打开时不响应底层按钮
@@ -481,7 +558,7 @@ HandleMenuClick = function(lx, ly)
     if HitRect(Renderer.menuNewGameRect, lx, ly) then
         if gameState.hasSave then
             -- 有存档，弹确认窗
-            Physics.PlaySfx(State.sfxButtonClick, 0.5)
+            Physics.PlaySfx(State.sfxButtonClick, 0.8)
             gameState.showNewGameConfirm = true
         else
             -- 无存档，直接新游戏
@@ -492,15 +569,23 @@ HandleMenuClick = function(lx, ly)
 
     -- 符文系统
     if HitRect(Renderer.menuRuneRect, lx, ly) then
-        Physics.PlaySfx(State.sfxButtonClick, 0.5)
+        Physics.PlaySfx(State.sfxButtonClick, 0.8)
         gameState.gamePhase = "runes"
         return
     end
 
     -- 放置模式
     if HitRect(Renderer.menuIdleRect, lx, ly) then
-        Physics.PlaySfx(State.sfxButtonClick, 0.5)
+        Physics.PlaySfx(State.sfxButtonClick, 0.8)
         IdleMode.Enter()
+        return
+    end
+
+    -- 公告按钮
+    if HitRect(Renderer.menuAnnounceBtnRect, lx, ly) then
+        Physics.PlaySfx(State.sfxButtonClick, 0.8)
+        gameState.showAnnouncePanel = true
+        CheckVersionUpdate()
         return
     end
 end
@@ -509,7 +594,7 @@ end
 local function HandleRuneClick(lx, ly)
     -- 返回按钮
     if HitRect(Renderer.runeBackRect, lx, ly) then
-        Physics.PlaySfx(State.sfxButtonClick, 0.5)
+        Physics.PlaySfx(State.sfxButtonClick, 0.8)
         gameState.gamePhase = "menu"
         Runes.scrollY = 0
         SaveSystem.Save()
@@ -521,7 +606,7 @@ local function HandleRuneClick(lx, ly)
         local rect = Renderer["runeUpgradeRect_" .. i]
         if rect and HitRect(rect, lx, ly) then
             if Runes.UpgradeRune(rune.id) then
-                Physics.PlaySfx(State.sfxButtonClick, 0.5)
+                Physics.PlaySfx(State.sfxButtonClick, 0.8)
                 SaveSystem.Save()
             end
             return

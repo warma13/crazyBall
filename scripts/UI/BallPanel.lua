@@ -143,13 +143,6 @@ function P.CreateBallButton(cb, index)
                 backgroundImage = Config.GetBallSkinImage(bt.skinKey),
                 backgroundSize = "contain",
                 opacity = isUnlocked and 1.0 or 0.5,
-                pointerEvents = "auto",
-                onClick = function(self)
-                    if isUnlocked then
-                        cb.PlayClickSfx()
-                        cb.ShowSkinPanel(index)
-                    end
-                end,
             },
             UI.Panel {
                 flexGrow = 1, flexShrink = 1, gap = 1, pointerEvents = "none",
