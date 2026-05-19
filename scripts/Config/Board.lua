@@ -11,7 +11,7 @@ M.CONFIG = {
     BOARD_SPLIT_RATIO = 0.52,
     BOARD_PADDING_X = 0,
 
-    PEG_ROWS = 9,
+    PEG_ROWS = 12,
     PEG_RADIUS = 4,
     PEG_COLOR = { 180, 200, 220, 255 },
     PEG_HIT_COLOR = { 255, 220, 100, 255 },

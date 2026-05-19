@@ -22,7 +22,6 @@ local PocketPanel = require("UI.PocketPanel")
 local EffectPanel = require("UI.EffectPanel")
 local SettingsPanel = require("UI.SettingsPanel")
 local FailedPanel = require("UI.FailedPanel")
-local SkinPanel = require("UI.SkinPanel")
 local LeaderboardPanel = require("UI.LeaderboardPanel")
 local RunePanel = require("UI.RunePanel")
 local Runes = require("Runes")
@@ -47,7 +46,7 @@ local IMG = {
     CARD_NORMAL    = "image/ui_card_normal_20260517160219.png",
     CARD_HIGHLIGHT = "image/ui_card_highlight_20260517160012.png",
 }
-local PANEL_SLICE = { top = 30, right = 30, bottom = 30, left = 30 }
+local PANEL_SLICE_BASE = 30  -- 基准切片边距，运行时乘以 uiScale
 local BAR_SLICE   = { top = 10, right = 20, bottom = 10, left = 20 }
 local CARD_SLICE  = { top = 16, right = 16, bottom = 16, left = 16 }
 
@@ -83,8 +82,6 @@ local cb = {
     -- 弹窗 Show/Hide（闭包延迟绑定，定义顺序无关）
     ShowSettingsPanel     = function()          M.ShowSettingsPanel() end,
     HideSettingsPanel     = function()          M.HideSettingsPanel() end,
-    ShowSkinPanel         = function(idx)       M.ShowSkinPanel(idx) end,
-    HideSkinPanel         = function()          M.HideSkinPanel() end,
     HideLeaderboardPanel  = function()          M.HideLeaderboardPanel() end,
     RefreshLeaderboardPanel = function()        M.RefreshLeaderboardPanel() end,
     HideFailedPanel       = function()          M.HideFailedPanel() end,
@@ -141,6 +138,7 @@ function M.CreateUI()
 end
 
 function M.CreateUpgradePanel()
+    local ps = math.floor(PANEL_SLICE_BASE * 320 / State.refWidth)  -- PC端refWidth更小时等比放大
     local fixedBtnChildren = {}
     if gameState.activeTab == "upgrades" then
         table.insert(fixedBtnChildren, EffectPanel.CreateDrawButton(cb))
@@ -168,8 +166,8 @@ function M.CreateUpgradePanel()
                 flexGrow = 1,
                 backgroundImage = IMG.PANEL_BG,
                 backgroundFit = "sliced",
-                backgroundSlice = PANEL_SLICE,
-                padding = { 30, 30, 24, 30 },
+                backgroundSlice = { top = ps, right = ps, bottom = ps, left = ps },
+                padding = { ps, ps, math.floor(ps * 0.8), ps },
                 overflow = "hidden",
                 children = {
                     UI.ScrollView {
@@ -628,23 +626,6 @@ function M.HideRuneRestartConfirm()
     if not State.uiRoot_ then return end
     local old = State.uiRoot_:FindById("runeRestartOverlay")
     if old then State.uiRoot_:RemoveChild(old) end
-end
-
--- 皮肤面板
-function M.ShowSkinPanel(ballIndex)
-    if not State.uiRoot_ then return end
-    M.HideSkinPanel()
-    State.uiRoot_:AddChild(SkinPanel.CreateSkinPanel(cb, ballIndex))
-end
-
-function M.HideSkinPanel()
-    if not State.uiRoot_ then return end
-    local old = State.uiRoot_:FindById("skinOverlay")
-    if old then State.uiRoot_:RemoveChild(old) end
-end
-
-function M.AdUnlockSkin(ballIndex, skinId)
-    SkinPanel.AdUnlockSkin(cb, ballIndex, skinId)
 end
 
 -- 排行榜弹窗

@@ -1,0 +1,271 @@
+{
+  "startTime": "2026-05-17T11:53:45.702Z",
+  "endTime": "2026-05-17T11:54:06.773Z",
+  "duration": "21071ms",
+  "result": {
+    "success": true
+  },
+  "steps": [
+    {
+      "time": "2026-05-17T11:53:45.880Z",
+      "stage": "upload_to_cdn",
+      "data": {
+        "status": "start"
+      }
+    },
+    {
+      "time": "2026-05-17T11:53:57.368Z",
+      "stage": "upload_to_cdn",
+      "data": {
+        "status": "done"
+      }
+    },
+    {
+      "time": "2026-05-17T11:53:57.368Z",
+      "stage": "network_config",
+      "data": {
+        "env": "production"
+      }
+    },
+    {
+      "time": "2026-05-17T11:53:57.379Z",
+      "stage": "load_config",
+      "data": {
+        "projectId": "p_j7dd",
+        "configPath": "/userspaces/a841439c-7ab3-4bee-a349-e3eccba301c4/workspace/.project/project.json",
+        "taptap_publish": {
+          "title": "疯狂弹珠",
+          "description": "发射弹珠，借反弹与连击累积积分。\n搭配随机效果，每一局都有全新流派与打法。\n真实物理反馈、节奏紧凑的闯关挑战，上手即沉浸，碰撞间解锁满屏爽感，在弹珠飞驰中突破极限、冲击高分。",
+          "category": "casual",
+          "screen_orientation": "portrait",
+          "collection_type": "sce",
+          "trial_note": "【更新公告】优化了卡顿问题，增加了附魔系统\n\n做《疯狂弹珠》的初衷，是想把童年弹珠的纯粹快乐，用更现代的玩法重新呈现。\n我打磨了流畅的物理手感，让每一次反弹都干脆利落；也加入随机构筑与策略选择，让简单操作藏有深度。\n希望你在一次次发射中，找回轻松解压的乐趣，也能在策略搭配里收获惊喜。感谢每一次碰撞与尝试，愿这颗小小的弹珠，能为你带来片刻畅快与治愈。",
+          "app_platforms": "1,2",
+          "developer_id": 264371,
+          "gameplay_demo_video_source": "https://tapcode-sce.spark.xd.com/videos/p_j7dd/1774799419994-rec_31b4bcaf-f8d5-4c07-9b5b-623d5b52f987.mp4",
+          "app_id": 835513,
+          "miniapp_id": "tapmcdiqhgjsmjiktf"
+        },
+        "assets": {
+          "icon": "./game_material/ICON_2026-03-29T12-18-22_01.png",
+          "screenshots": [
+            "./game_material/SCREENSHOT_2026-03-29T12-15-48_01.png",
+            "./game_material/SCREENSHOT_2026-03-29T12-15-48_02.png",
+            "./game_material/SCREENSHOT_2026-03-29T12-15-48_03.png"
+          ],
+          "promotional_image": "./game_material/PROMO_2026-03-29T12-15-48_01.jpg",
+          "icon_url": "https://tapcode-sce.spark.xd.com/assets/game_material/疯狂弹珠/ICON_2026-03-29T12-18-22_01.png",
+          "screenshot_urls": [
+            "https://tapcode-sce.spark.xd.com/assets/game_material/疯狂弹珠/SCREENSHOT_2026-03-29T12-15-48_01.png",
+            "https://tapcode-sce.spark.xd.com/assets/game_material/疯狂弹珠/SCREENSHOT_2026-03-29T12-15-48_02.png",
+            "https://tapcode-sce.spark.xd.com/assets/game_material/疯狂弹珠/SCREENSHOT_2026-03-29T12-15-48_03.png"
+          ],
+          "promotional_image_url": "https://tapcode-sce.spark.xd.com/assets/game_material/疯狂弹珠/PROMO_2026-03-29T12-15-48_01.jpg",
+          "square_promotional_image": "./game_material/SQUARE_PROMO_2026-03-29T15-51-56_01.jpg",
+          "square_promotional_image_url": "https://tapcode-sce.spark.xd.com/assets/game_material/疯狂弹珠/SQUARE_PROMO_2026-03-29T15-51-56_01.jpg",
+          "cover_horizontal": "./.project/game_material/COVER_HORIZONTAL_2026-04-05T14-50-27_01.png",
+          "cover_vertical": "./.project/game_material/COVER_VERTICAL_2026-04-05T14-50-27_01.png"
+        }
+      }
+    },
+    {
+      "time": "2026-05-17T11:53:57.701Z",
+      "stage": "update_game",
+      "data": {
+        "app_id": 835513,
+        "developer_id": 264371
+      }
+    },
+    {
+      "time": "2026-05-17T11:53:57.712Z",
+      "stage": "upload_assets",
+      "data": {
+        "status": "start",
+        "assets": {
+          "icon": "./game_material/ICON_2026-03-29T12-18-22_01.png",
+          "screenshots": [
+            "./game_material/SCREENSHOT_2026-03-29T12-15-48_01.png",
+            "./game_material/SCREENSHOT_2026-03-29T12-15-48_02.png",
+            "./game_material/SCREENSHOT_2026-03-29T12-15-48_03.png"
+          ],
+          "promotional_image": "./game_material/PROMO_2026-03-29T12-15-48_01.jpg",
+          "icon_url": "https://tapcode-sce.spark.xd.com/assets/game_material/疯狂弹珠/ICON_2026-03-29T12-18-22_01.png",
+          "screenshot_urls": [
+            "https://tapcode-sce.spark.xd.com/assets/game_material/疯狂弹珠/SCREENSHOT_2026-03-29T12-15-48_01.png",
+            "https://tapcode-sce.spark.xd.com/assets/game_material/疯狂弹珠/SCREENSHOT_2026-03-29T12-15-48_02.png",
+            "https://tapcode-sce.spark.xd.com/assets/game_material/疯狂弹珠/SCREENSHOT_2026-03-29T12-15-48_03.png"
+          ],
+          "promotional_image_url": "https://tapcode-sce.spark.xd.com/assets/game_material/疯狂弹珠/PROMO_2026-03-29T12-15-48_01.jpg",
+          "square_promotional_image": "./game_material/SQUARE_PROMO_2026-03-29T15-51-56_01.jpg",
+          "square_promotional_image_url": "https://tapcode-sce.spark.xd.com/assets/game_material/疯狂弹珠/SQUARE_PROMO_2026-03-29T15-51-56_01.jpg",
+          "cover_horizontal": "./.project/game_material/COVER_HORIZONTAL_2026-04-05T14-50-27_01.png",
+          "cover_vertical": "./.project/game_material/COVER_VERTICAL_2026-04-05T14-50-27_01.png"
+        }
+      }
+    },
+    {
+      "time": "2026-05-17T11:54:01.807Z",
+      "stage": "upload_cover_horizontal",
+      "data": {
+        "path": "./.project/game_material/COVER_HORIZONTAL_2026-04-05T14-50-27_01.png",
+        "resolvedPath": "/userspaces/a841439c-7ab3-4bee-a349-e3eccba301c4/workspace/.project/game_material/COVER_HORIZONTAL_2026-04-05T14-50-27_01.png"
+      }
+    },
+    {
+      "time": "2026-05-17T11:54:01.824Z",
+      "stage": "upload_cover_horizontal",
+      "data": {
+        "fileSize": 2565905
+      }
+    },
+    {
+      "time": "2026-05-17T11:54:02.511Z",
+      "stage": "upload_cover_horizontal",
+      "data": {
+        "response": {
+          "result": true,
+          "image_url": "https://img-tc.tapimg.com/market/images/Fhc4BWt9PCDgM8oJeGlcImH7xcx4.png"
+        }
+      }
+    },
+    {
+      "time": "2026-05-17T11:54:02.512Z",
+      "stage": "upload_cover_vertical",
+      "data": {
+        "path": "./.project/game_material/COVER_VERTICAL_2026-04-05T14-50-27_01.png",
+        "resolvedPath": "/userspaces/a841439c-7ab3-4bee-a349-e3eccba301c4/workspace/.project/game_material/COVER_VERTICAL_2026-04-05T14-50-27_01.png"
+      }
+    },
+    {
+      "time": "2026-05-17T11:54:02.528Z",
+      "stage": "upload_cover_vertical",
+      "data": {
+        "fileSize": 2153430
+      }
+    },
+    {
+      "time": "2026-05-17T11:54:03.256Z",
+      "stage": "upload_cover_vertical",
+      "data": {
+        "response": {
+          "result": true,
+          "image_url": "https://img-tc.tapimg.com/market/images/FsiSXRydlz26B9e2zREnzOuY4ixV.png"
+        }
+      }
+    },
+    {
+      "time": "2026-05-17T11:54:03.799Z",
+      "stage": "upload_assets",
+      "data": {
+        "status": "done",
+        "uploadedAssets": {
+          "iconUrl": "https://img-tc.tapimg.com/market/images/Fl1qa7CLrqVyGEandHdMzreKwCUZ.png",
+          "screenshotUrls": [
+            "https://img-tc.tapimg.com/market/images/Fuha1CdViTs5BGH_8adrk3Y6Svfu.png",
+            "https://img-tc.tapimg.com/market/images/FjBbmduWsVXKW4JaU5_mBAvEsunR.png",
+            "https://img-tc.tapimg.com/market/images/FqXeX-Ehe9er8NPmxcMm_EaxJ1w4.png"
+          ],
+          "bannerUrl": "https://img-tc.tapimg.com/market/images/FthrYboU8saz_u5dCfNJDPZ9mmC_.jpg",
+          "coverUrl": "https://img-tc.tapimg.com/market/images/Fhc4BWt9PCDgM8oJeGlcImH7xcx4.png",
+          "coverVerticalUrl": "https://img-tc.tapimg.com/market/images/FsiSXRydlz26B9e2zREnzOuY4ixV.png",
+          "squarePromoImageUrl": "https://img-tc.tapimg.com/market/images/Fuq1xQ0P8jEcIWw37nmT8ltDdrsO.jpg"
+        }
+      }
+    },
+    {
+      "time": "2026-05-17T11:54:03.800Z",
+      "stage": "resolve_gameplay_demo_video",
+      "data": {
+        "source": "https://tapcode-sce.spark.xd.com/videos/p_j7dd/1774799419994-rec_31b4bcaf-f8d5-4c07-9b5b-623d5b52f987.mp4",
+        "sourceType": "remote",
+        "appId": 835513,
+        "developerId": 264371
+      }
+    },
+    {
+      "time": "2026-05-17T11:54:03.807Z",
+      "stage": "resolve_gameplay_demo_video_cache_lookup",
+      "data": {
+        "cacheEntry": {
+          "source": "https://tapcode-sce.spark.xd.com/videos/p_j7dd/1774799419994-rec_31b4bcaf-f8d5-4c07-9b5b-623d5b52f987.mp4",
+          "source_type": "remote",
+          "video_id": 5580941,
+          "sha256": "b1e662cc162e31399a621efc1e4f93869e997e34781fa59490633b5aa1a4a188",
+          "etag": "\"91237851C2CB666B8DF0EA478BF5C1BD\"",
+          "last_modified": "Sun, 29 Mar 2026 15:50:21 GMT",
+          "content_length": 9541027
+        }
+      }
+    },
+    {
+      "time": "2026-05-17T11:54:04.870Z",
+      "stage": "submit_spark_request",
+      "data": {
+        "app_id": 835513,
+        "developer_id": 264371,
+        "map_version": "29",
+        "sce_project_id": "p_j7dd",
+        "category": "casual",
+        "collection_type": "casual",
+        "description": "发射弹珠，借反弹与连击累积积分。\n搭配随机效果，每一局都有全新流派与打法。\n真实物理反馈、节奏紧凑的闯关挑战，上手即沉浸，碰撞间解锁满屏爽感，在弹珠飞驰中突破极限、冲击高分。",
+        "screen_orientation": 1,
+        "title": "疯狂弹珠",
+        "icon": "https://img-tc.tapimg.com/market/images/Fl1qa7CLrqVyGEandHdMzreKwCUZ.png",
+        "screenshots": [
+          "https://img-tc.tapimg.com/market/images/Fuha1CdViTs5BGH_8adrk3Y6Svfu.png",
+          "https://img-tc.tapimg.com/market/images/FjBbmduWsVXKW4JaU5_mBAvEsunR.png",
+          "https://img-tc.tapimg.com/market/images/FqXeX-Ehe9er8NPmxcMm_EaxJ1w4.png"
+        ],
+        "banner": "https://img-tc.tapimg.com/market/images/FthrYboU8saz_u5dCfNJDPZ9mmC_.jpg",
+        "trial_note": "【更新公告】优化了卡顿问题，增加了附魔系统\n\n做《疯狂弹珠》的初衷，是想把童年弹珠的纯粹快乐，用更现代的玩法重新呈现。\n我打磨了流畅的物理手感，让每一次反弹都干脆利落；也加入随机构筑与策略选择，让简单操作藏有深度。\n希望你在一次次发射中，找回轻松解压的乐趣，也能在策略搭配里收获惊喜。感谢每一次碰撞与尝试，愿这颗小小的弹珠，能为你带来片刻畅快与治愈。",
+        "app_platforms": "1,2",
+        "cover": "https://img-tc.tapimg.com/market/images/Fhc4BWt9PCDgM8oJeGlcImH7xcx4.png",
+        "cover_vertical": "https://img-tc.tapimg.com/market/images/FsiSXRydlz26B9e2zREnzOuY4ixV.png",
+        "gameplay_demo_video_id": 5580941,
+        "square_promo_image": "https://img-tc.tapimg.com/market/images/Fuq1xQ0P8jEcIWw37nmT8ltDdrsO.jpg",
+        "publish_intl": false
+      }
+    },
+    {
+      "time": "2026-05-17T11:54:06.610Z",
+      "stage": "submit_spark_response",
+      "data": {
+        "app_id": 835513,
+        "app_title": "疯狂弹珠",
+        "category": "casual",
+        "category_label": "休闲",
+        "display_app_title": "休闲游戏大全"
+      }
+    },
+    {
+      "time": "2026-05-17T11:54:06.610Z",
+      "stage": "update_project_app_id",
+      "data": {
+        "stage": "start",
+        "project_id": "p_j7dd",
+        "app_id": 835513
+      }
+    },
+    {
+      "time": "2026-05-17T11:54:06.773Z",
+      "stage": "update_project_app_id",
+      "data": {
+        "stage": "success",
+        "project_id": "p_j7dd",
+        "app_id": 835513
+      }
+    },
+    {
+      "time": "2026-05-17T11:54:06.773Z",
+      "stage": "publish_result",
+      "data": {
+        "action": "updated",
+        "status": "pending_review",
+        "game_id": 835513,
+        "message": "成功更新游戏 \"疯狂弹珠\"",
+        "developer_id": 264371,
+        "config_file_path": "/userspaces/a841439c-7ab3-4bee-a349-e3eccba301c4/workspace/.project/project.json"
+      }
+    }
+  ]
+}

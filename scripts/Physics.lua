@@ -114,8 +114,8 @@ function M.RecalcLayout()
     local w = physW / dpr
     local h = physH / dpr
 
-    -- 棋盘元素缩放系数（基于参考宽度 320，与 UI 缩放一致）
-    local bs = w / 320
+    -- 棋盘元素缩放系数（基于参考宽度，与 UI 缩放一致）
+    local bs = w / State.refWidth
     gameState.boardScale = bs
 
     local splitY = _rawFloor(h * CONFIG.BOARD_SPLIT_RATIO)
@@ -176,7 +176,7 @@ function M.InitPegs()
 
     local splitY = _rawFloor(h * CONFIG.BOARD_SPLIT_RATIO)
 
-    local bs = w / 320
+    local bs = w / State.refWidth
     gameState.boardScale = bs
 
     gameState.boardLeft = CONFIG.BOARD_PADDING_X
@@ -227,7 +227,7 @@ function M.InitPegs()
     for row = 1, CONFIG.PEG_ROWS do
         local y = gameState.contentTop + row * rowSpacing
         local isOddRow = (row % 2 == 1)
-        local pegsInRow = isOddRow and _rawMax(slotCount - 1, 2) or _rawMax(slotCount, 3)
+        local pegsInRow = isOddRow and _rawMax(slotCount + 1, 4) or _rawMax(slotCount + 2, 5)
 
         for col = 1, pegsInRow do
             local x

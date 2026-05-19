@@ -141,6 +141,12 @@ M.gameState.idleLevelData = {}
 M.gameState.idleSkills = {}            -- { [skillId] = level }
 M.gameState.idleSkillPickCount = 0     -- 已完成技能选择次数（驱动阶段推进）
 
+-- 公告系统（非持久化，每次启动重新检测）
+M.gameState.showAnnouncePanel = false   -- 是否显示公告弹窗
+M.gameState.announceChecking = false    -- 是否正在检测版本
+M.gameState.announceHasNewVer = false   -- 是否有新版本
+M.gameState.announceRemoteVer = nil     -- 远端版本号字符串（如 "v1.0.32"）
+
 -- 游戏阶段
 M.gameState.gamePhase = "menu"
 M.gameState.loading = false
@@ -188,15 +194,18 @@ M.roundPopup_ = nil
 M.uiDirty = false
 M.uiDirtyTimer = 0
 
--- UI 缩放系数（基于参考宽度 320 逻辑像素，手机端 ≈1.2，PC 端按比例放大）
+-- UI 缩放系数（基于参考宽度，手机/PC 自适应）
 M.uiScale = 1.0
+M.refWidth = 320  -- 当前参考宽度（供 Physics 等模块共享）
 
 --- 更新 UI 缩放系数（每帧或分辨率变化时调用）
 function M.UpdateUIScale()
     local physW = graphics:GetWidth()
     local dpr = graphics:GetDPR()
     local logicalW = physW / dpr
-    M.uiScale = logicalW / 320
+    -- PC 端 DPR=1，屏幕大但像素密度低，用较小的基准宽度放大 UI
+    M.refWidth = dpr <= 1.0 and 280 or 320
+    M.uiScale = logicalW / M.refWidth
 end
 
 --- 按 uiScale 缩放像素值的快捷函数
