@@ -114,7 +114,7 @@ local _idleColorGroups = {
 local S = State.S
 
 -- 水印信息
-local GAME_VERSION = "v1.0.31"
+local GAME_VERSION = "v1.0.37"
 M.GAME_VERSION = GAME_VERSION
 local cachedUidStr = nil  -- 延迟获取
 
@@ -1245,24 +1245,8 @@ function M.DrawMenuScreen(vg, w, h)
     end
     M.menuRuneRect = { x = rightX, y = row2Y, w = smallBtnW, h = smallBtnH }
 
-    -- ==== 第三行：放置模式（全宽绿色按钮） ====
-    local row3Y = row2Y + smallBtnH + rowGap
-    local idleX = (w - bigBtnW) / 2
-    local idleHover = isHover(idleX, row3Y, bigBtnW, smallBtnH)
-    local idleOffY = idleHover and -S(2) or 0
-    local idleDrawY = row3Y + idleOffY
-
-    if imgBtnGreen ~= 0 then
-        nvgBeginPath(vg)
-        nvgRect(vg, idleX, idleDrawY, bigBtnW, smallBtnH)
-        nvgFillPaint(vg, nvgImagePattern(vg, idleX, idleDrawY, bigBtnW, smallBtnH, 0, imgBtnGreen, 1.0))
-        nvgFill(vg)
-    end
-    nvgFontSize(vg, S(18))
-    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-    nvgFillColor(vg, nvgRGBA(120, 255, 180, idleHover and 255 or 230))
-    nvgText(vg, w / 2, idleDrawY + smallBtnH / 2, "放置模式", nil)
-    M.menuIdleRect = { x = idleX, y = row3Y, w = bigBtnW, h = smallBtnH }
+    -- ==== 第三行：放置模式（已隐藏） ====
+    M.menuIdleRect = { x = -100, y = -100, w = 0, h = 0 }
 
     if not hasSave then
         M.menuContinueRect = { x = -100, y = -100, w = 0, h = 0 }
@@ -1273,7 +1257,6 @@ function M.DrawMenuScreen(vg, w, h)
     if bigHover then curHover = "big"
     elseif hasSave and isHover(leftX, row2Y, smallBtnW, smallBtnH) then curHover = "new"
     elseif runeHover then curHover = "rune"
-    elseif idleHover then curHover = "idle"
     end
     if curHover and curHover ~= prevHoverBtn then
         PlayUISound(State.sfxButtonHover, 0.6)
@@ -1409,9 +1392,23 @@ function M.DrawMenuScreen(vg, w, h)
         nvgFillColor(vg, nvgRGBA(0, 0, 0, 160))
         nvgFill(vg)
 
-        -- 弹窗卡片
+        -- 公告条目（在这里增减即可自动适配高度）
+        local announceItems = {
+            "- 修复了附魔丢失的问题",
+            "- 优化了UI布局",
+        }
+
+        -- 计算自适应高度
+        local lineH = S(20)          -- 每条公告行高
+        local announceH = #announceItems * lineH
+        -- 版本检测区域高度
+        local versionCheckH = S(24)
+        if gameState.announceHasNewVer then
+            versionCheckH = S(74)     -- 新版本 + 两行提示
+        end
+        -- 总高度：标题(48) + 版本号(30) + 公告区域 + 间距(8) + 版本检测 + 间距(18) + 关闭按钮(36) + 底部(18)
         local dlgW2 = S(260)
-        local dlgH2 = S(260)
+        local dlgH2 = S(48) + S(30) + announceH + S(8) + versionCheckH + S(18) + S(36) + S(18)
         local dlgX2 = (w - dlgW2) / 2
         local dlgY2 = (h - dlgH2) / 2
 
@@ -1447,32 +1444,32 @@ function M.DrawMenuScreen(vg, w, h)
         nvgFillColor(vg, nvgRGBA(200, 210, 240, 230))
         nvgText(vg, w / 2, dlgY2 + S(60), "当前版本: " .. GAME_VERSION, nil)
 
-        -- 更新公告
+        -- 更新公告（自动遍历）
+        local curY = dlgY2 + S(88)
         nvgFontSize(vg, S(13))
         nvgFillColor(vg, nvgRGBA(220, 220, 240, 200))
-        nvgText(vg, w / 2, dlgY2 + S(90), "- 优化了UI布局", nil)
+        for _, item in ipairs(announceItems) do
+            nvgText(vg, w / 2, curY, item, nil)
+            curY = curY + lineH
+        end
 
         -- 新版本检测结果
-        local infoY = dlgY2 + S(115)
+        local infoY = curY + S(8)
         if gameState.announceChecking then
             nvgFontSize(vg, S(13))
             nvgFillColor(vg, nvgRGBA(160, 170, 200, 180))
             local dots = string.rep(".", math.floor(time * 2) % 4)
             nvgText(vg, w / 2, infoY, "正在检测版本" .. dots, nil)
         elseif gameState.announceHasNewVer then
-            -- 有新版本
             nvgFontSize(vg, S(16))
             nvgFillColor(vg, nvgRGBA(100, 220, 120, 255))
             nvgText(vg, w / 2, infoY, "检测到新版本: " .. (gameState.announceRemoteVer or ""), nil)
-
-            -- 更新提示
             nvgFontSize(vg, S(13))
             nvgFillColor(vg, nvgRGBA(255, 220, 100, 220))
             local tipY = infoY + S(30)
             nvgText(vg, w / 2, tipY, "点击右上角三个点", nil)
             nvgText(vg, w / 2, tipY + S(20), "再点下方「重新启动」更新版本", nil)
         else
-            -- 已是最新
             nvgFontSize(vg, S(14))
             nvgFillColor(vg, nvgRGBA(140, 200, 160, 220))
             nvgText(vg, w / 2, infoY, "已是最新版本", nil)

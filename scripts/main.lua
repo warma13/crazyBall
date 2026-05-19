@@ -503,6 +503,7 @@ end
 
 --- 菜单点击检测（前向声明，依赖 NewGame/StartGame 等）
 local HandleMenuClick
+local menuTouchActive = false
 
 --- 新游戏（重置状态，不加载存档）
 local function NewGame()
@@ -581,11 +582,13 @@ HandleMenuClick = function(lx, ly)
         return
     end
 
-    -- 公告按钮
+    -- 公告按钮（toggle）
     if HitRect(Renderer.menuAnnounceBtnRect, lx, ly) then
         Physics.PlaySfx(State.sfxButtonClick, 0.8)
-        gameState.showAnnouncePanel = true
-        CheckVersionUpdate()
+        gameState.showAnnouncePanel = not gameState.showAnnouncePanel
+        if gameState.showAnnouncePanel then
+            CheckVersionUpdate()
+        end
         return
     end
 end
@@ -637,15 +640,19 @@ function HandleUpdate(eventType, eventData)
             local my = input.mousePosition.y / dpr
             HandleMenuClick(mx, my)
         end
-        -- 触摸检测
-        for t = 0, input:GetNumTouches() - 1 do
-            local touch = input:GetTouch(t)
-            if touch and touch.pressure > 0 and touch.delta.x == 0 and touch.delta.y == 0 then
+        -- 触摸检测（只响应新触摸，防止按住重复触发）
+        local numTouches = input:GetNumTouches()
+        if numTouches > 0 and not menuTouchActive then
+            menuTouchActive = true
+            local touch = input:GetTouch(0)
+            if touch and touch.pressure > 0 then
                 local dpr = graphics:GetDPR()
                 local tx = touch.position.x / dpr
                 local ty = touch.position.y / dpr
                 HandleMenuClick(tx, ty)
             end
+        elseif numTouches == 0 then
+            menuTouchActive = false
         end
         return  -- 菜单阶段不更新游戏逻辑
     end

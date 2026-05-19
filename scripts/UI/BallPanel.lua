@@ -179,10 +179,22 @@ function P.CreateBallButton(cb, index)
                         for _, cfg in ipairs(Config.ENCHANTMENTS) do
                             local lv = enchants[cfg.id]
                             if lv and lv > 0 then
-                                table.insert(enchantIcons, UI.Label {
-                                    text = cfg.icon .. lv,
-                                    fontSize = 11,
-                                    fontColor = { cfg.color[1], cfg.color[2], cfg.color[3], 220 },
+                                table.insert(enchantIcons, UI.Panel {
+                                    flexDirection = "row",
+                                    alignItems = "center",
+                                    gap = 1,
+                                    children = {
+                                        UI.Panel {
+                                            width = 14, height = 14,
+                                            backgroundImage = cfg.iconImage,
+                                            backgroundFit = "contain",
+                                        },
+                                        UI.Label {
+                                            text = tostring(lv),
+                                            fontSize = 11,
+                                            fontColor = { cfg.color[1], cfg.color[2], cfg.color[3], 220 },
+                                        },
+                                    },
                                 })
                             end
                         end

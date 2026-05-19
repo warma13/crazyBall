@@ -471,8 +471,10 @@ function M.UpdateBalls(dt)
                     PegEffects.OnPegHit(ball, peg, gameState.pegs, gameState.balls, false)
 
                     -- 附魔：撞钉概率分裂（peg_split, 乘算，每级5%）
+                    -- 分裂出的球不可再触发附魔分裂，防止无限连锁
                     local enchantSplitChance = Enchantment.GetValue(ball.typeIndex, "peg_split")
                     if enchantSplitChance > 0 and #balls < maxBalls
+                        and not ball.enchantSplit
                         and math.random() < enchantSplitChance then
                         table.insert(balls, {
                             x = ball.x,
@@ -486,6 +488,7 @@ function M.UpdateBalls(dt)
                             alive = true,
                             pegHits = 0,
                             hasSplit = true,
+                            enchantSplit = true,
                             splitCount = 999,
                             aliveTime = 0,
                             baseRadius = ballRadius * bs,

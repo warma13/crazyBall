@@ -254,9 +254,10 @@ function P._CreateEnchantRow(cb, ballIndex)
                 IdleUI.RefreshCurrentTab()
             end,
             children = {
-                UI.Label {
-                    text = cfg.icon,
-                    fontSize = 16,
+                UI.Panel {
+                    width = 22, height = 22,
+                    backgroundImage = cfg.iconImage,
+                    backgroundFit = "contain",
                 },
                 UI.Label {
                     text = owned and ("Lv." .. lv) or "-",
@@ -334,9 +335,10 @@ function P._CreateEnchantRow(cb, ballIndex)
                 alignItems = "center",
                 gap = 4,
                 children = {
-                    UI.Label {
-                        text = selCfg.icon,
-                        fontSize = 13,
+                    UI.Panel {
+                        width = 16, height = 16,
+                        backgroundImage = selCfg.iconImage,
+                        backgroundFit = "contain",
                     },
                     UI.Label {
                         text = descText,

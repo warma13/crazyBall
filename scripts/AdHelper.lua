@@ -6,6 +6,7 @@
 local UI = require("urhox-libs/UI")
 local State = require("State")
 local EventBus = require("EventBus")
+local SaveSystem = require("SaveSystem")
 
 local gameState = State.gameState
 
@@ -90,7 +91,8 @@ local function ShowTicketPopup(onResult)
                             dismiss()
                             -- 扣券
                             gameState.adFreeTickets = (gameState.adFreeTickets or 0) - 1
-                            EventBus.emit("save_trigger")
+                            SaveSystem.Save()
+                            SaveSystem.Flush()
                             -- 直接返回成功
                             gameState.paused = false
                             onResult({ success = true })
@@ -119,6 +121,10 @@ local function ShowTicketPopup(onResult)
                             sdk:ShowRewardVideoAd(function(result)
                                 gameState.paused = false
                                 onResult(result)
+                                if result.success then
+                                    SaveSystem.Save()
+                                    SaveSystem.Flush()
+                                end
                             end)
                         end,
                         children = {
@@ -184,6 +190,10 @@ function M.ShowRewardAd(callback)
         sdk:ShowRewardVideoAd(function(result)
             gameState.paused = false
             callback(result)
+            if result.success then
+                SaveSystem.Save()
+                SaveSystem.Flush()
+            end
         end)
     end
 end

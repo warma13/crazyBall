@@ -9,6 +9,7 @@ local Config = require("Config")
 local State = require("State")
 local EventBus = require("EventBus")
 local AdHelper = require("AdHelper")
+local SaveSystem = require("SaveSystem")
 ---@diagnostic disable-next-line: undefined-global
 local sdk = sdk
 
@@ -108,6 +109,9 @@ function M.AdEnchant()
                 newLevel = oldLevel + 1,
                 isUpgrade = isUpgrade,
             })
+            -- 附魔后立刻保存，防止丢失
+            SaveSystem.Save()
+            SaveSystem.Flush()
         end
     end)
 end

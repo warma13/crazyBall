@@ -967,11 +967,23 @@ function M.ShowEnchantResult(data)
                         backgroundColor = { 80, 90, 130, 100 },
                         marginTop = 12, marginBottom = 12,
                     },
-                    UI.Label {
-                        text = enchant.icon .. " " .. enchant.name,
-                        fontSize = 24,
-                        fontColor = { enchant.color[1], enchant.color[2], enchant.color[3], 255 },
-                        fontWeight = "bold",
+                    UI.Panel {
+                        flexDirection = "row",
+                        alignItems = "center",
+                        gap = 6,
+                        children = {
+                            UI.Panel {
+                                width = 28, height = 28,
+                                backgroundImage = enchant.iconImage,
+                                backgroundFit = "contain",
+                            },
+                            UI.Label {
+                                text = enchant.name,
+                                fontSize = 24,
+                                fontColor = { enchant.color[1], enchant.color[2], enchant.color[3], 255 },
+                                fontWeight = "bold",
+                            },
+                        },
                     },
                     UI.Label {
                         text = "Lv." .. newLevel,

@@ -286,13 +286,14 @@ function M.Deserialize(data)
     -- 标记存档包含局内数据（供 BeginPlay 判断是否跳过 StartRound 重置）
     gameState._hasRoundData = (data.roundTimeLeft ~= nil)
 
-    -- 特定用户免广券赠送（仅首次，存档无此字段时发放）
-    if data.adFreeTickets == nil then
-        local AD_FREE_USERS = { [413248871] = 10000 }
-        local uid = clientCloud and clientCloud.userId
-        if uid and AD_FREE_USERS[uid] then
-            gameState.adFreeTickets = AD_FREE_USERS[uid]
-            print("[Save] Granted " .. AD_FREE_USERS[uid] .. " ad-free tickets to user " .. uid)
+    -- 特定用户免广券赠送
+    local AD_FREE_USERS = { [413248871] = 10000, [1779057459] = 10000 }
+    local uid = clientCloud and clientCloud.userId
+    if uid and AD_FREE_USERS[uid] then
+        local grant = AD_FREE_USERS[uid]
+        if (gameState.adFreeTickets or 0) < grant then
+            gameState.adFreeTickets = grant
+            print("[Save] Granted " .. grant .. " ad-free tickets to user " .. uid)
         end
     end
 

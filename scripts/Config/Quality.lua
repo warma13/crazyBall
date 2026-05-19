@@ -30,15 +30,15 @@ end
 -- ============================================================================
 
 M.ENCHANTMENTS = {
-    { id = "gem_chance",       name = "宝石猎手", icon = "\xF0\x9F\x92\x8E", color = { 180, 100, 255, 255 }, baseValue = 0.01, stacking = "add",
+    { id = "gem_chance",       name = "宝石猎手", icon = "\xF0\x9F\x92\x8E", iconImage = "image/enchant_gem_chance_20260519090532.png",       color = { 180, 100, 255, 255 }, baseValue = 0.01, stacking = "add",
       descFunc = function(lv) return string.format("撞钉产宝石概率+%d%%", lv) end },
-    { id = "peg_split",        name = "分裂之力", icon = "\xF0\x9F\x92\xA5", color = { 255, 120, 50, 255 },  baseValue = 0.05, stacking = "mul",
+    { id = "peg_split",        name = "分裂之力", icon = "\xF0\x9F\x92\xA5", iconImage = "image/enchant_peg_split_20260519090603.png",        color = { 255, 120, 50, 255 },  baseValue = 0.05, stacking = "mul",
       descFunc = function(lv) local v = 1 - (1 - 0.05) ^ lv; return string.format("撞钉%.1f%%概率分裂球", v * 100) end },
-    { id = "ball_value",       name = "点金术",   icon = "\xF0\x9F\x92\xB0", color = { 255, 220, 50, 255 },  baseValue = 1.00, stacking = "add",
+    { id = "ball_value",       name = "点金术",   icon = "\xF0\x9F\x92\xB0", iconImage = "image/enchant_ball_value_20260519090333.png",       color = { 255, 220, 50, 255 },  baseValue = 1.00, stacking = "add",
       descFunc = function(lv) return string.format("球基础价值+%d%%", lv * 100) end },
-    { id = "upgrade_discount", name = "精打细算", icon = "\xF0\x9F\x8F\xB7\xEF\xB8\x8F",  color = { 100, 200, 150, 255 }, baseValue = 0.05, stacking = "mul",
+    { id = "upgrade_discount", name = "精打细算", icon = "\xF0\x9F\x8F\xB7\xEF\xB8\x8F", iconImage = "image/enchant_upgrade_discount_20260519090647.png", color = { 100, 200, 150, 255 }, baseValue = 0.05, stacking = "mul",
       descFunc = function(lv) local v = 1 - (1 - 0.05) ^ lv; return string.format("升级金币减少%.1f%%", v * 100) end },
-    { id = "extra_ball",       name = "幸运投放", icon = "\xF0\x9F\x8E\xB2", color = { 80, 180, 255, 255 },  baseValue = 0.05, stacking = "add",
+    { id = "extra_ball",       name = "幸运投放", icon = "\xF0\x9F\x8E\xB2", iconImage = "image/enchant_extra_ball_20260519090330.png",       color = { 80, 180, 255, 255 },  baseValue = 0.05, stacking = "add",
       descFunc = function(lv) return string.format("投放%d%%概率多一个球", lv * 5) end },
 }
 
