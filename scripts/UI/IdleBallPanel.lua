@@ -13,8 +13,20 @@ local gameState = State.gameState
 
 local P = {}
 
+-- UI 背景图路径
+local IMG = {
+    CARD       = "image/ui_card_normal_20260517160219.png",
+    CARD_HL    = "image/ui_card_highlight_20260517160012.png",
+}
+local CARD_SLICE = { top = 20, right = 20, bottom = 20, left = 20 }
+
 -- 当前选中查看的附魔索引（1-based，对应 Config.ENCHANTMENTS）
 local selectedEnchantIdx = 1
+
+-- ======= 轻量更新引用 =======
+-- { [abilityId] = { card=widget, btn=widget, costLbl=widget, lastCanAfford=bool } }
+local abilityRefs = {}
+local headerCoinRef = nil  -- header 中的球币 Label
 
 --- 创建球币余额固定栏（不随列表滚动）
 ---@return table UI 面板
@@ -57,6 +69,7 @@ function P.CreateBallHeader()
             },
             -- 球币数字
             UI.Label {
+                id = "ballCoinLabel",
                 text = ballCoinStr,
                 fontSize = 14,
                 fontColor = { bc[1], bc[2], bc[3], 255 },
@@ -74,10 +87,17 @@ function P.CreateBallHeader()
     }
 end
 
+--- 清空轻量更新引用（全量重建前调用）
+function P.ResetRefs()
+    abilityRefs = {}
+    headerCoinRef = nil
+end
+
 --- 创建弹珠面板（当前弹珠信息 + 能力升级列表）
 ---@param cb table 回调表
 ---@return table UI 面板
 function P.CreateBallList(cb)
+    P.ResetRefs()
     local children = {}
 
     -- 顶部：当前弹珠信息卡片
@@ -131,9 +151,10 @@ function P.CreateCurrentBallInfo(cb)
         id = "idleBallInfo",
         width = "100%",
         padding = { 12, 10, 12, 10 },
-        backgroundColor = { bt.color[1], bt.color[2], bt.color[3], 40 },
-        borderColor = { bt.color[1], bt.color[2], bt.color[3], 120 },
-        borderWidth = 2,
+        backgroundImage = IMG.CARD_HL,
+        backgroundFit = "sliced",
+        backgroundSlice = CARD_SLICE,
+        imageTint = { bt.color[1], bt.color[2], bt.color[3], 200 },
         borderRadius = 12,
         gap = 6,
         children = {
@@ -392,8 +413,6 @@ function P.CreateAbilityItem(cb, index, ballUpgrades)
     local level = IdleMode.GetBallAbilityLevel(abCfg.id)
     local isUnlocked = IdleMode.IsBallAbilityUnlocked(index)
     local isMaxed = level >= abCfg.maxLevel
-    local goalLevel = abCfg.goalLevel or 1
-    local goalDone = level >= goalLevel
 
     -- 当前球皮肤图片（用于费用图标）
     local typeIdx = IdleMode.GetCurrentBallType()
@@ -412,12 +431,14 @@ function P.CreateAbilityItem(cb, index, ballUpgrades)
             id = "idleBallAbility_" .. abCfg.id,
             width = "100%",
             flexDirection = "row",
-            padding = { 8, 8, 8, 8 },
-            backgroundColor = { 22, 24, 38, 180 },
-            borderColor = { 40, 42, 58, 120 },
-            borderWidth = 1,
+            padding = { 8, 12, 8, 12 },
+            backgroundImage = IMG.CARD,
+            backgroundFit = "sliced",
+            backgroundSlice = CARD_SLICE,
+            imageTint = { 120, 120, 120, 200 },
             borderRadius = 10,
             alignItems = "center", gap = 8,
+            opacity = 0.6,
             children = {
                 -- 左侧：锁定提示
                 UI.Panel {
@@ -479,35 +500,26 @@ function P.CreateAbilityItem(cb, index, ballUpgrades)
         costText = State.FormatNumber(cost)
     end
 
-    -- 目标进度文本
-    local goalText
-    if goalDone then
-        goalText = "✓ 目标达成"
-    else
-        goalText = string.format("目标: Lv.%d/%d", level, goalLevel)
-    end
+    -- 卡片背景图
+    local cardImg = canAfford and IMG.CARD_HL or IMG.CARD
+    local cardTint = canAfford
+        and { 80, 200, 120, 200 }
+        or nil
 
-    -- 颜色
-    local bgColor, borderColor
-    if goalDone and isMaxed then
-        bgColor = { 35, 40, 30, 200 }
-        borderColor = { 100, 100, 60, 120 }
-    elseif canAfford then
-        bgColor = { 30, 45, 60, 220 }
-        borderColor = { 80, 180, 120, 200 }
-    else
-        bgColor = { 28, 32, 50, 200 }
-        borderColor = { 45, 55, 75, 150 }
-    end
+    -- 唯一 id
+    local cardId = "ballAbCard_" .. abCfg.id
+    local btnId  = "ballAbBtn_" .. abCfg.id
+    local costId = "ballAbCost_" .. abCfg.id
 
-    return UI.Panel {
-        id = "idleBallAbility_" .. abCfg.id,
+    local card = UI.Panel {
+        id = cardId,
         width = "100%",
         flexDirection = "row",
-        padding = { 8, 8, 8, 8 },
-        backgroundColor = bgColor,
-        borderColor = borderColor,
-        borderWidth = canAfford and 2 or 1.5,
+        padding = { 8, 12, 8, 12 },
+        backgroundImage = cardImg,
+        backgroundFit = "sliced",
+        backgroundSlice = CARD_SLICE,
+        imageTint = cardTint,
         borderRadius = 10,
         alignItems = "center", gap = 8,
         pointerEvents = "auto",
@@ -518,78 +530,166 @@ function P.CreateAbilityItem(cb, index, ballUpgrades)
             end
         end,
         children = {
-            -- 左侧：名称 + 描述 + 当前值 + 目标进度
+            -- 左侧：名称 + 描述(含属性值) — flex 结构与升级面板一致
             UI.Panel {
-                flexGrow = 1, gap = 2, pointerEvents = "none",
+                flexGrow = 1, flexShrink = 1, gap = 1, pointerEvents = "none",
                 children = {
-                    -- 名称 + 等级
-                    UI.Label {
-                        text = abCfg.name .. (isMaxed and " MAX" or ("  Lv." .. level)),
-                        fontSize = 16,
-                        fontColor = isMaxed
-                            and { 255, 220, 80, 255 }
-                            or { 220, 230, 250, 255 },
+                    -- 第一行：名称 + 等级标签（flex-row）
+                    UI.Panel {
+                        flexDirection = "row", alignItems = "center", gap = 6,
+                        children = {
+                            UI.Label {
+                                text = abCfg.name,
+                                fontSize = 14,
+                                fontColor = { 230, 240, 255, 255 },
+                            },
+                            UI.Panel {
+                                padding = { 4, 1, 4, 1 },
+                                borderRadius = 3,
+                                backgroundColor = isMaxed
+                                    and { 255, 200, 50, 40 }
+                                    or { 80, 200, 120, 30 },
+                                children = {
+                                    UI.Label {
+                                        text = isMaxed and "MAX" or ("Lv." .. level),
+                                        fontSize = 10,
+                                        fontColor = isMaxed
+                                            and { 255, 220, 80, 255 }
+                                            or { 80, 200, 120, 220 },
+                                    },
+                                },
+                            },
+                        },
                     },
-                    -- 描述
-                    UI.Label {
-                        text = abCfg.desc,
-                        fontSize = 12,
-                        fontColor = { 120, 140, 170, 180 },
-                    },
-                    -- 当前值 → 下一级值
+                    -- 第二行：描述 + 当前效果值
                     UI.Label {
                         text = isMaxed
-                            and currentValue
-                            or (currentValue .. " → " .. nextValue),
-                        fontSize = 13,
-                        fontColor = isMaxed
-                            and { 180, 200, 140, 200 }
-                            or { 100, 200, 160, 220 },
-                    },
-                    -- 目标进度
-                    UI.Label {
-                        text = goalText,
+                            and (abCfg.desc .. "  " .. currentValue)
+                            or (abCfg.desc .. "  " .. currentValue .. " → " .. nextValue),
                         fontSize = 11,
-                        fontColor = goalDone
-                            and { 120, 220, 100, 220 }
-                            or { 200, 170, 80, 200 },
+                        fontColor = { 160, 170, 190, 200 },
                     },
                 },
             },
-            -- 右侧：费用按钮
+            -- 右侧：费用按钮（与升级面板一致）
             UI.Panel {
-                padding = { 8, 6, 8, 6 },
-                borderRadius = 8,
+                id = btnId,
+                minWidth = 52,
+                padding = { 8, 5, 8, 5 },
+                borderRadius = 6,
+                flexShrink = 0,
                 backgroundColor = isMaxed
-                    and { 60, 60, 40, 150 }
+                    and { 50, 50, 40, 180 }
                     or (canAfford and { 50, 140, 70, 220 } or { 40, 45, 60, 200 }),
+                borderColor = isMaxed
+                    and { 80, 80, 60, 100 }
+                    or (canAfford and { 80, 200, 100, 150 } or { 55, 60, 80, 100 }),
+                borderWidth = 1,
+                justifyContent = "center", alignItems = "center",
                 pointerEvents = "none",
-                flexDirection = "row", alignItems = "center", gap = 4,
-                children = isMaxed
-                    and {
-                        UI.Label {
-                            text = "已满级",
-                            fontSize = 13,
-                            fontColor = { 180, 180, 120, 180 },
-                            textAlign = "center",
-                        },
-                    }
-                    or {
-                        UI.Panel {
-                            width = 16, height = 16, borderRadius = 8,
-                            backgroundImage = ballSkinImg,
-                        },
-                        UI.Label {
-                            text = costText,
-                            fontSize = 13,
-                            fontColor = canAfford
-                                and { 180, 255, 180, 255 }
-                                or { 110, 120, 150, 180 },
-                        },
+                children = {
+                    UI.Panel {
+                        flexDirection = "row", alignItems = "center", gap = 3,
+                        children = isMaxed
+                            and {
+                                UI.Label {
+                                    text = "MAX",
+                                    fontSize = 12,
+                                    fontColor = { 200, 180, 80, 200 },
+                                    textAlign = "center",
+                                },
+                            }
+                            or {
+                                UI.Panel {
+                                    width = 14, height = 14, borderRadius = 7,
+                                    backgroundImage = ballSkinImg,
+                                },
+                                UI.Label {
+                                    id = costId,
+                                    text = costText,
+                                    fontSize = 12,
+                                    fontColor = canAfford
+                                        and { 180, 255, 180, 255 }
+                                        or { 110, 120, 150, 180 },
+                                },
+                            },
                     },
+                },
             },
         },
     }
+
+    -- 记录引用供轻量更新
+    if not isMaxed then
+        abilityRefs[abCfg.id] = { canAfford = canAfford }
+    end
+
+    return card
+end
+
+--- 轻量更新 header 中的球币数字（不重建）
+---@param root table UI 根节点
+function P.UpdateHeader(root)
+    if not root then return end
+    local lbl = root:FindById("ballCoinLabel")
+    if lbl then
+        lbl:SetStyle({ text = State.FormatNumber(gameState.idleBallCoins) })
+    end
+end
+
+--- 轻量更新所有能力项的 canAfford 样式（不重建）
+--- 返回 true 表示有变化
+---@param root table UI 根节点
+---@return boolean changed
+function P.UpdateAfford(root)
+    if not root then return false end
+    local IdleMode = require("IdleMode")
+    local ballUpgrades = IdleMode.GetCurrentBallUpgrades()
+    local changed = false
+
+    for _, abCfg in ipairs(ballUpgrades) do
+        local ref = abilityRefs[abCfg.id]
+        if ref then  -- 非满级项才有 ref
+            local lv = IdleMode.GetBallAbilityLevel(abCfg.id)
+            local cost = Config.GetUpgradeCost(abCfg, lv)
+            local canAfford = (lv < abCfg.maxLevel) and (gameState.idleBallCoins >= cost)
+
+            if canAfford ~= ref.canAfford then
+                ref.canAfford = canAfford
+                changed = true
+                -- 更新卡片背景
+                local card = root:FindById("ballAbCard_" .. abCfg.id)
+                if card then
+                    card:SetStyle({
+                        backgroundImage = canAfford and IMG.CARD_HL or IMG.CARD,
+                        imageTint = canAfford and { 80, 200, 120, 200 } or nil,
+                    })
+                end
+                -- 更新按钮颜色+边框
+                local btn = root:FindById("ballAbBtn_" .. abCfg.id)
+                if btn then
+                    btn:SetStyle({
+                        backgroundColor = canAfford
+                            and { 50, 140, 70, 220 }
+                            or { 40, 45, 60, 200 },
+                        borderColor = canAfford
+                            and { 80, 200, 100, 150 }
+                            or { 55, 60, 80, 100 },
+                    })
+                end
+                -- 更新费用文本颜色
+                local costLbl = root:FindById("ballAbCost_" .. abCfg.id)
+                if costLbl then
+                    costLbl:SetStyle({
+                        fontColor = canAfford
+                            and { 180, 255, 180, 255 }
+                            or { 110, 120, 150, 180 },
+                    })
+                end
+            end
+        end
+    end
+    return changed
 end
 
 return P

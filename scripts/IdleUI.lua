@@ -69,9 +69,8 @@ local cb = {
     -- IdleMode 方法（延迟绑定，避免循环依赖）
     PurchaseBallAbility = function(abilityId)
         local IdleMode = require("IdleMode")
-        if IdleMode.PurchaseBallAbility(abilityId) then
-            M.RefreshCurrentTab()
-        end
+        IdleMode.PurchaseBallAbility(abilityId)
+        -- 不调 RefreshCurrentTab：等级变化由 ComputeStructKey 下一帧自动检测并重建
     end,
     -- 口袋升级已改为自动（掉球N个+1倍率），无需手动回调
     DoPrestige = function()
@@ -87,9 +86,8 @@ local cb = {
     end,
     PurchaseUpgrade = function(upgradeId)
         local IdleMode = require("IdleMode")
-        if IdleMode.PurchaseUpgrade(upgradeId) then
-            M.RefreshCurrentTab()
-        end
+        IdleMode.PurchaseUpgrade(upgradeId)
+        -- 不调 RefreshCurrentTab：等级变化由 ComputeStructKey 下一帧自动检测并重建
     end,
 }
 
@@ -301,13 +299,18 @@ local function CreateUpgradePanel()
     local hdr = CreateTabHeader()
     if hdr then headerChildren[1] = hdr end
 
+    -- 动态计算切片边距和内边距（与主游戏 GameUI 一致）
+    local ps = math.floor(30 * 320 / State.refWidth)
+
     return UI.Panel {
         id = "idleUpgradePanel",
         width = "100%",
         flexGrow = 1,
         backgroundImage = IMG.PANEL_BG,
         backgroundFit = "sliced",
-        backgroundSlice = PANEL_SLICE,
+        backgroundSlice = { top = ps, right = ps, bottom = ps, left = ps },
+        padding = { ps, ps, math.floor(ps * 0.8), ps },
+        overflow = "hidden",
         children = {
             -- 固定 header 容器
             UI.Panel {
@@ -320,7 +323,7 @@ local function CreateUpgradePanel()
                 width = "100%",
                 flexGrow = 1,
                 showScrollbar = false,
-                padding = { 10, 14, 6, 14 },
+                padding = { 2, 2, 2, 2 },
                 onScroll = function(self, sx, sy)
                     if not pendingRestore then
                         tabScrollY[activeTab] = sy
@@ -554,32 +557,42 @@ function M.RestoreTabScroll()
     end
 end
 
---- 检查 affordability 变化，有变化则刷新
+--- 检查 affordability 变化，轻量更新样式；仅等级/结构变化时全量重建
 function M.CheckAffordRefresh()
-    local key = M.ComputeAffordKey()
+    -- 先轻量更新 header 货币数字（每帧开销极小）
+    if activeTab == "balls" then
+        IdleBallPanel.UpdateHeader(idleRoot_)
+    elseif activeTab == "upgrade" then
+        IdleUpgradePanel.UpdateHeader(idleRoot_)
+    end
+
+    -- 尝试轻量更新 canAfford 样式
+    if activeTab == "balls" then
+        IdleBallPanel.UpdateAfford(idleRoot_)
+    elseif activeTab == "upgrade" then
+        IdleUpgradePanel.UpdateAfford(idleRoot_)
+    end
+
+    -- 结构性变化（等级改变等）仍需全量重建
+    local key = M.ComputeStructKey()
     if key ~= lastAffordKey then
         lastAffordKey = key
         M.RefreshTabContent()
     end
 end
 
---- 计算当前 tab 所有 item 的 canAfford 位图
-function M.ComputeAffordKey()
+--- 计算结构性 key（只包含等级/解锁等结构数据，不含 coin 值和 canAfford）
+function M.ComputeStructKey()
     local IdleMode = require("IdleMode")
     if activeTab == "balls" then
         local ballUpgrades = IdleMode.GetCurrentBallUpgrades()
         local bits = {}
         for i, abCfg in ipairs(ballUpgrades) do
             local lv = IdleMode.GetBallAbilityLevel(abCfg.id)
-            local cost = Config.GetUpgradeCost(abCfg, lv)
-            local can = (lv < abCfg.maxLevel and gameState.idleBallCoins >= cost) and "1" or "0"
-            bits[i] = can .. lv
+            bits[i] = tostring(lv)
         end
-        -- 加入关卡索引 + 球币值（header 实时刷新）
-        local bcKey = tostring(gameState.idleBallCoins)
-        return "B" .. gameState.idleLevel .. "_" .. bcKey .. "_" .. table.concat(bits, "_")
+        return "B" .. gameState.idleLevel .. "_" .. table.concat(bits, "_")
     elseif activeTab == "skills" then
-        -- 技能面板：技能数量/等级变化 + 关卡切换时刷新
         local bits = {}
         for id, lv in pairs(gameState.idleSkills) do
             bits[#bits + 1] = id .. lv
@@ -593,11 +606,9 @@ function M.ComputeAffordKey()
         local bits = {}
         for i, upgCfg in ipairs(Config.IDLE.UPGRADES) do
             local lv = gameState.idleUpgradeLevels[upgCfg.id] or 0
-            local cost = Config.GetUpgradeCost(upgCfg, lv)
-            local can = (lv < upgCfg.maxLevel and gameState.idleCoins >= cost) and "1" or "0"
-            bits[i] = can .. lv
+            bits[i] = tostring(lv)
         end
-        return "U" .. State.FormatNumber(gameState.idleCoins) .. "_" .. table.concat(bits, "_")
+        return "U" .. table.concat(bits, "_")
     end
     return ""
 end

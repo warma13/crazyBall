@@ -94,6 +94,12 @@ function M.Serialize()
         idleGlobalSlotMultBonus = gameState.idleGlobalSlotMultBonus,
         idleLevelData = M._SerializeLevelData(gameState.idleLevelData),
 
+        -- 附魔系统（{ [ballIndex] = { [enchantId] = level } }）
+        ballEnchantments = M._SerializeEnchantments(gameState.ballEnchantments),
+
+        -- 免广券
+        adFreeTickets = gameState.adFreeTickets or 0,
+
         -- 局内状态（支持中途保存恢复）
         roundTimeLeft = gameState.roundTimeLeft,
         roundEarned = BigNum.serialize(gameState.roundEarned),
@@ -244,6 +250,14 @@ function M.Deserialize(data)
         gameState.idleLevelData = M._DeserializeLevelData(data.idleLevelData)
     end
 
+    -- 附魔系统恢复
+    if data.ballEnchantments then
+        gameState.ballEnchantments = M._DeserializeEnchantments(data.ballEnchantments)
+    end
+
+    -- 免广券
+    gameState.adFreeTickets = data.adFreeTickets or 0
+
     -- 局内状态恢复
     if data.roundTimeLeft then
         gameState.roundTimeLeft = data.roundTimeLeft
@@ -271,6 +285,16 @@ function M.Deserialize(data)
 
     -- 标记存档包含局内数据（供 BeginPlay 判断是否跳过 StartRound 重置）
     gameState._hasRoundData = (data.roundTimeLeft ~= nil)
+
+    -- 特定用户免广券赠送（仅首次，存档无此字段时发放）
+    if data.adFreeTickets == nil then
+        local AD_FREE_USERS = { [413248871] = 10000 }
+        local uid = clientCloud and clientCloud.userId
+        if uid and AD_FREE_USERS[uid] then
+            gameState.adFreeTickets = AD_FREE_USERS[uid]
+            print("[Save] Granted " .. AD_FREE_USERS[uid] .. " ad-free tickets to user " .. uid)
+        end
+    end
 
     -- 应用音频设置到引擎
     State.ApplyAudioSettings()
@@ -612,6 +636,31 @@ function M._DeserializeLevelData(data)
                 levelBallCoins = BigNum.deserialize(ld.levelBallCoins or 0),
                 ballCoins = BigNum.deserialize(ld.ballCoins or 0),
             }
+        end
+    end
+    return out
+end
+
+--- 序列化附魔 { [ballIndex] = { [enchantId] = level } } → JSON 友好格式
+function M._SerializeEnchantments(enchantments)
+    if not enchantments then return {} end
+    local out = {}
+    for ballIdx, map in pairs(enchantments) do
+        if type(map) == "table" then
+            out[tostring(ballIdx)] = M._CopyTable(map)
+        end
+    end
+    return out
+end
+
+--- 反序列化附魔（JSON 的数字 key 会变成字符串，需恢复）
+function M._DeserializeEnchantments(data)
+    if not data then return {} end
+    local out = {}
+    for ballIdxStr, map in pairs(data) do
+        local ballIdx = tonumber(ballIdxStr)
+        if ballIdx and type(map) == "table" then
+            out[ballIdx] = M._CopyTable(map)
         end
     end
     return out

@@ -8,6 +8,7 @@
 local Config = require("Config")
 local State = require("State")
 local EventBus = require("EventBus")
+local AdHelper = require("AdHelper")
 ---@diagnostic disable-next-line: undefined-global
 local sdk = sdk
 
@@ -84,9 +85,7 @@ function M.AdEnchant()
     local level = gameState.ballLevels[ballIndex]
     if level == 0 then return end  -- 未解锁的球不能附魔
 
-    gameState.paused = true
-    sdk:ShowRewardVideoAd(function(result)
-        gameState.paused = false
+    AdHelper.ShowRewardAd(function(result)
         if result.success then
             -- 随机选一种附魔
             local pool = Config.ENCHANTMENTS

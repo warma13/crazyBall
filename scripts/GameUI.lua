@@ -26,6 +26,7 @@ local LeaderboardPanel = require("UI.LeaderboardPanel")
 local RunePanel = require("UI.RunePanel")
 local Runes = require("Runes")
 local Enchantment = require("Enchantment")
+local AdHelper = require("AdHelper")
 local DebugPanel = require("UI.DebugPanel")
 
 local CONFIG = Config.CONFIG
@@ -467,9 +468,7 @@ function M.ShowRuneRestartConfirm()
             marginBottom = 8,
             onClick = function()
                 PlayClickSfx()
-                gameState.paused = true
-                sdk:ShowRewardVideoAd(function(result)
-                    gameState.paused = false
+                AdHelper.ShowRewardAd(function(result)
                     if result.success then
                         M.HideRuneRestartConfirm()
                         if M.OnRuneRestart then
@@ -905,19 +904,11 @@ function M.SubscribeEvents()
     end)
 
     EventBus.on("enchant_changed", function(data)
-        -- 刷新附魔按钮
-        if State.uiRoot_ then
-            local drawArea = State.uiRoot_:FindById("drawBtnFixed")
-            if drawArea and gameState.activeTab == "balls" then
-                drawArea:ClearChildren()
-                drawArea:SetStyle({ flexDirection = "row", gap = 4 })
-                local bulkBtn = EffectPanel.CreateBulkUpgradeButton(cb)
-                bulkBtn:SetStyle({ width = "80%" })
-                drawArea:AddChild(bulkBtn)
-                drawArea:AddChild(EffectPanel.CreateEnchantButton(cb))
-            end
+        -- 轻量刷新附魔按钮（文字 + 颜色）
+        if gameState.activeTab == "balls" then
+            EffectPanel.UpdateEnchantButton()
         end
-        -- 刷新球列表中对应球
+        -- 刷新球列表中对应球的附魔指示器
         if gameState.activeTab == "balls" and data then
             M.RefreshBallItem(data.ballIndex)
         end

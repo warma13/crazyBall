@@ -5,6 +5,7 @@
 local Config = require("Config")
 local State = require("State")
 local EventBus = require("EventBus")
+local AdHelper = require("AdHelper")
 
 local CONFIG = Config.CONFIG
 local gameState = State.gameState
@@ -88,9 +89,7 @@ end
 function M.AdUpgradeSlot(slotIndex)
     local slot = gameState.slots[slotIndex]
     if not slot then return end
-    gameState.paused = true
-    sdk:ShowRewardVideoAd(function(result)
-        gameState.paused = false
+    AdHelper.ShowRewardAd(function(result)
         if result.success then
             slot.level = (slot.level or 1) + 1
             EventBus.emit("slot_changed", { index = slotIndex })

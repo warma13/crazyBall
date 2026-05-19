@@ -141,6 +141,9 @@ M.gameState.idleLevelData = {}
 M.gameState.idleSkills = {}            -- { [skillId] = level }
 M.gameState.idleSkillPickCount = 0     -- 已完成技能选择次数（驱动阶段推进）
 
+-- 免广券（持久化，看广告前可消耗一张免看）
+M.gameState.adFreeTickets = 0
+
 -- 公告系统（非持久化，每次启动重新检测）
 M.gameState.showAnnouncePanel = false   -- 是否显示公告弹窗
 M.gameState.announceChecking = false    -- 是否正在检测版本

@@ -681,10 +681,15 @@ function M.DrawSlots(vg)
         nvgFill(vg)
     end
 
-    -- ===== 放置模式：per-slot 填充进度 =====
+    -- ===== 放置模式：per-slot 填充进度（带内边距，不超出口袋边框） =====
     local edges = gameState.slotEdges
     local centers = gameState.slotCenters
     if isIdle and edges then
+        local padX = S(3)       -- 中间口袋水平内边距
+        local padEdge = S(10)   -- 最左/最右口袋外侧边距（口袋底图边框厚度）
+        local padTop = S(4)     -- 顶部内边距
+        local padBot = S(3)     -- 底部内边距
+        local innerH = slotH - padTop - padBot
         if lowQ then
             nvgBeginPath(vg)
             for i = 1, slotCount do
@@ -694,10 +699,10 @@ function M.DrawSlots(vg)
                 local pct = drops / req
                 if pct > 1 then pct = 1 end
                 if pct > 0 then
-                    local eL = edges[i]
-                    local eR = edges[i + 1]
-                    local fillH = slotH * pct
-                    nvgRect(vg, eL + 1, slotY + slotH - fillH, eR - eL - 2, fillH)
+                    local eL = edges[i] + (i == 1 and padEdge or padX)
+                    local eR = edges[i + 1] - (i == slotCount and padEdge or padX)
+                    local fillH = innerH * pct
+                    nvgRect(vg, eL, slotY + padTop + innerH - fillH, eR - eL, fillH)
                 end
             end
             nvgFillColor(vg, nvgRGBA(80, 200, 120, 100))
@@ -710,14 +715,15 @@ function M.DrawSlots(vg)
                 local pct = drops / req
                 if pct > 1 then pct = 1 end
                 if pct > 0 then
-                    local eL = edges[i]
-                    local eR = edges[i + 1]
-                    local fillH = slotH * pct
+                    local eL = edges[i] + (i == 1 and padEdge or padX)
+                    local eR = edges[i + 1] - (i == slotCount and padEdge or padX)
+                    local fillH = innerH * pct
+                    local fillY = slotY + padTop + innerH - fillH
                     nvgBeginPath(vg)
-                    nvgRect(vg, eL + 1, slotY + slotH - fillH, eR - eL - 2, fillH)
+                    nvgRect(vg, eL, fillY, eR - eL, fillH)
                     local glowAlpha = math_floor(120 + 40 * math_sin(time * 3 + i))
                     nvgFillPaint(vg, nvgLinearGradient(vg,
-                        eL, slotY + slotH - fillH, eL, slotY + slotH,
+                        eL, fillY, eL, fillY + fillH,
                         nvgRGBA(80, 220, 140, glowAlpha),
                         nvgRGBA(60, 180, 100, math_floor(glowAlpha * 0.6))))
                     nvgFill(vg)
@@ -1239,24 +1245,35 @@ function M.DrawMenuScreen(vg, w, h)
     end
     M.menuRuneRect = { x = rightX, y = row2Y, w = smallBtnW, h = smallBtnH }
 
-    -- ==== 第三行：放置模式（有存档时）/ 继续游戏禁用占位（无存档时隐藏） ====
+    -- ==== 第三行：放置模式（全宽绿色按钮） ====
     local row3Y = row2Y + smallBtnH + rowGap
+    local idleX = (w - bigBtnW) / 2
+    local idleHover = isHover(idleX, row3Y, bigBtnW, smallBtnH)
+    local idleOffY = idleHover and -S(2) or 0
+    local idleDrawY = row3Y + idleOffY
 
-    if hasSave then
-        -- 放置模式入口已隐藏
-        M.menuIdleRect = { x = -100, y = -100, w = 0, h = 0 }
-    else
-        -- 无存档时不显示继续游戏，把rect设为不可点区域
+    if imgBtnGreen ~= 0 then
+        nvgBeginPath(vg)
+        nvgRect(vg, idleX, idleDrawY, bigBtnW, smallBtnH)
+        nvgFillPaint(vg, nvgImagePattern(vg, idleX, idleDrawY, bigBtnW, smallBtnH, 0, imgBtnGreen, 1.0))
+        nvgFill(vg)
+    end
+    nvgFontSize(vg, S(18))
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    nvgFillColor(vg, nvgRGBA(120, 255, 180, idleHover and 255 or 230))
+    nvgText(vg, w / 2, idleDrawY + smallBtnH / 2, "放置模式", nil)
+    M.menuIdleRect = { x = idleX, y = row3Y, w = bigBtnW, h = smallBtnH }
+
+    if not hasSave then
         M.menuContinueRect = { x = -100, y = -100, w = 0, h = 0 }
     end
-
-    -- 底部提示已移除
 
     -- ==== hover 进入检测 & 音效 ====
     local curHover = nil
     if bigHover then curHover = "big"
     elseif hasSave and isHover(leftX, row2Y, smallBtnW, smallBtnH) then curHover = "new"
     elseif runeHover then curHover = "rune"
+    elseif idleHover then curHover = "idle"
     end
     if curHover and curHover ~= prevHoverBtn then
         PlayUISound(State.sfxButtonHover, 0.6)

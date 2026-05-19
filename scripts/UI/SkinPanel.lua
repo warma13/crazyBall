@@ -5,6 +5,7 @@
 local UI = require("urhox-libs/UI")
 local Config = require("Config")
 local State = require("State")
+local AdHelper = require("AdHelper")
 
 local gameState = State.gameState
 
@@ -15,27 +16,7 @@ local P = {}
 ---@param ballIndex number 球索引
 ---@param skinId string 皮肤 ID
 function P.AdUnlockSkin(cb, ballIndex, skinId)
-    ---@diagnostic disable-next-line: undefined-global
-    local sdk = sdk
-    gameState.paused = true
-    if not sdk then
-        gameState.paused = false
-        -- SDK 不可用时直接解锁
-        local skinKey = ballIndex .. "_" .. skinId
-        gameState.unlockedSkins[skinKey] = true
-        gameState.ballSkins[ballIndex] = skinId
-        State.uiDirty = true
-        cb.ShowSkinPanel(ballIndex)
-        cb.RefreshBallItem(ballIndex)
-        if ballIndex == gameState.selectedBallType then
-            cb.UpdateDropButton()
-        end
-        local SaveSystem = require("SaveSystem")
-        SaveSystem.Save()
-        return
-    end
-    sdk:ShowRewardVideoAd(function(result)
-        gameState.paused = false
+    AdHelper.ShowRewardAd(function(result)
         if result.success then
             local skinKey = ballIndex .. "_" .. skinId
             gameState.unlockedSkins[skinKey] = true
@@ -46,7 +27,6 @@ function P.AdUnlockSkin(cb, ballIndex, skinId)
             if ballIndex == gameState.selectedBallType then
                 cb.UpdateDropButton()
             end
-            -- 自动保存
             local SaveSystem = require("SaveSystem")
             SaveSystem.Save()
         end

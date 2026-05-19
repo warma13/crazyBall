@@ -57,7 +57,6 @@ local COLORS = {
 }
 
 local ITEM_HEIGHT = 58
-local BORDER_W    = 2.5
 
 -- ============================================================================
 -- 关卡选择弹窗
@@ -232,46 +231,32 @@ function P.CreateSkillHeader()
     local progress = (total > 0) and (done / total) or 0
     if currentLevel ~= maxUnlocked then progress = 1 end
 
+    local btnText = string.format("阶段 %d / %d  %s  ▼", currentLevel, maxUnlocked, progressText)
+
     return UI.Panel {
         id = "idleSkillHeader",
         width = "100%",
-        backgroundColor = { 0, 0, 0, 0 },
-        borderColor = { 120, 180, 255, 60 },
-        borderWidth = { 0, 0, 1, 0 },
+        padding = { 6, 6, 6, 6 },
+        alignItems = "center",
         children = {
-            -- 可点击的关卡按钮
             UI.Panel {
-                width = "100%",
+                paddingLeft = 16, paddingRight = 16,
+                paddingTop = 6, paddingBottom = 6,
+                backgroundImage = IMG.CARD,
+                backgroundFit = "sliced",
+                backgroundSlice = CARD_SLICE,
+                borderRadius = 8,
+                pointerEvents = "auto",
+                onClick = function() ShowLevelSelect() end,
+                flexDirection = "row",
                 alignItems = "center",
-                padding = { 6, 6, 4, 6 },
+                gap = 6,
                 children = {
-                    UI.Button {
-                        text = string.format("阶段 %d / %d  ▼", currentLevel, maxUnlocked),
-                        fontSize = 14,
-                        variant = "ghost",
-                        fontColor = { 120, 200, 255, 255 },
-                        onClick = function(self)
-                            ShowLevelSelect()
-                        end,
-                    },
                     UI.Label {
-                        text = progressText,
-                        fontSize = 10,
-                        fontColor = allDone and { 100, 255, 150, 200 } or { 140, 150, 180, 180 },
+                        text = btnText,
+                        fontSize = 13,
+                        fontColor = { 120, 200, 255, 255 },
                         textAlign = "center",
-                    },
-                },
-            },
-            -- 进度条
-            UI.Panel {
-                width = "100%",
-                height = 4,
-                backgroundColor = { 30, 35, 55, 200 },
-                children = {
-                    UI.Panel {
-                        width = string.format("%.1f%%", progress * 100),
-                        height = "100%",
-                        backgroundColor = allDone and { 100, 255, 150, 220 } or { 80, 160, 255, 200 },
                     },
                 },
             },
@@ -327,7 +312,7 @@ function P.CreateSkillList()
 end
 
 -- ============================================================================
--- 单个技能项（DropButton 风格：边框进度条 + 高光阴影）
+-- 单个技能项（卡片图片背景）
 -- ============================================================================
 
 function P.CreateSkillItem(cfg, level)
@@ -342,72 +327,26 @@ function P.CreateSkillItem(cfg, level)
     local typeLabel = "瞬发"
     local cdLabel = string.format("CD %.0fs", cd)
 
-    local itemW = "100%"
-
-    -- 四段边框（绝对定位，顺时针填充）
-    local borderTop = UI.Panel {
-        position = "absolute", top = 0, left = 0,
-        width = "100%", height = BORDER_W,
-        backgroundColor = COLORS.borderReady,
-        borderRadius = { BORDER_W, BORDER_W, 0, 0 },
-        pointerEvents = "none",
-    }
-    local borderRight = UI.Panel {
-        position = "absolute", top = 0, right = 0,
-        width = BORDER_W, height = "100%",
-        backgroundColor = COLORS.borderReady,
-        borderRadius = { 0, BORDER_W, BORDER_W, 0 },
-        pointerEvents = "none",
-    }
-    local borderBottom = UI.Panel {
-        position = "absolute", bottom = 0, right = 0,
-        width = "100%", height = BORDER_W,
-        backgroundColor = COLORS.borderReady,
-        borderRadius = { 0, 0, BORDER_W, BORDER_W },
-        pointerEvents = "none",
-    }
-    local borderLeft = UI.Panel {
-        position = "absolute", bottom = 0, left = 0,
-        width = BORDER_W, height = "100%",
-        backgroundColor = COLORS.borderReady,
-        borderRadius = { BORDER_W, 0, 0, BORDER_W },
-        pointerEvents = "none",
-    }
-
-    -- 顶部高光
-    local highlightBar = UI.Panel {
-        position = "absolute",
-        top = BORDER_W, left = BORDER_W + 4, right = BORDER_W + 4,
-        height = 2,
-        backgroundGradient = {
-            type = "linear", direction = "to-bottom",
-            from = COLORS.innerHighlight,
-            to = { COLORS.innerHighlight[1], COLORS.innerHighlight[2], COLORS.innerHighlight[3], 0 },
-        },
-        pointerEvents = "none",
-    }
-
-    -- 底部阴影
-    local shadowBar = UI.Panel {
-        position = "absolute",
-        bottom = BORDER_W, left = BORDER_W + 4, right = BORDER_W + 4,
-        height = 3,
-        backgroundGradient = {
-            type = "linear", direction = "to-top",
-            from = COLORS.innerShadow,
-            to = { COLORS.innerShadow[1], COLORS.innerShadow[2], COLORS.innerShadow[3], 0 },
-        },
-        pointerEvents = "none",
-    }
-
-    -- 图标
-    local iconLbl = UI.Label {
-        text = icon,
-        fontSize = 18,
-        fontColor = { ic[1], ic[2], ic[3], 255 },
-        textAlign = "center",
-        pointerEvents = "none",
-    }
+    -- 图标（优先使用图片，1:1 铺满行高）
+    local iconSize = ITEM_HEIGHT - 8 * 2  -- 减去上下 padding
+    local iconLbl
+    if cfg.iconImage then
+        iconLbl = UI.Panel {
+            width = iconSize, height = iconSize,
+            backgroundImage = cfg.iconImage,
+            backgroundFit = "contain",
+            borderRadius = 4,
+            pointerEvents = "none",
+        }
+    else
+        iconLbl = UI.Label {
+            text = icon,
+            fontSize = 18,
+            fontColor = { ic[1], ic[2], ic[3], 255 },
+            textAlign = "center",
+            pointerEvents = "none",
+        }
+    end
 
     -- 名称行
     local nameLbl = UI.Label {
@@ -435,27 +374,29 @@ function P.CreateSkillItem(cfg, level)
         pointerEvents = "none",
     }
 
-    -- 内容面板（边框内区域）
-    local innerPanel = UI.Panel {
-        position = "absolute",
-        top = BORDER_W, left = BORDER_W, right = BORDER_W, bottom = BORDER_W,
+    -- 卡片面板
+    local outer = UI.Panel {
+        width = "100%",
+        height = ITEM_HEIGHT,
         flexDirection = "row",
         alignItems = "center",
-        padding = { 8, 6, 8, 6 },
+        paddingTop = 8, paddingRight = 12, paddingBottom = 8, paddingLeft = 12,
         gap = 8,
-        backgroundColor = COLORS.bgReady,
-        borderRadius = 6,
+        backgroundImage = IMG.CARD,
+        backgroundFit = "sliced",
+        backgroundSlice = CARD_SLICE,
+        borderRadius = 8,
         overflow = "hidden",
-        pointerEvents = "none",
         children = {
-            -- 图标区
+            -- 图标区（1:1 铺满行高）
             UI.Panel {
-                width = 34, height = 34,
+                width = iconSize, height = iconSize,
                 justifyContent = "center", alignItems = "center",
                 borderRadius = 7,
-                backgroundColor = { ic[1], ic[2], ic[3], 40 },
-                borderColor = { ic[1], ic[2], ic[3], 60 },
-                borderWidth = 1,
+                backgroundColor = cfg.iconImage and { 0, 0, 0, 0 } or { ic[1], ic[2], ic[3], 40 },
+                borderColor = cfg.iconImage and { 0, 0, 0, 0 } or { ic[1], ic[2], ic[3], 60 },
+                borderWidth = cfg.iconImage and 0 or 1,
+                overflow = "hidden",
                 children = { iconLbl },
             },
             -- 文字区
@@ -476,29 +417,9 @@ function P.CreateSkillItem(cfg, level)
         },
     }
 
-    -- 外层容器（暗底 = 未填充边框背景色）
-    local outer = UI.Panel {
-        width = itemW,
-        height = ITEM_HEIGHT,
-        backgroundColor = COLORS.borderDim,
-        borderRadius = 8,
-        overflow = "hidden",
-        children = {
-            borderTop, borderRight, borderBottom, borderLeft,
-            innerPanel,
-            highlightBar, shadowBar,
-        },
-    }
-
     -- 保存引用供实时更新
     skillItemRefs_[cfg.id] = {
         outer       = outer,
-        innerPanel  = innerPanel,
-        borderTop   = borderTop,
-        borderRight = borderRight,
-        borderBottom = borderBottom,
-        borderLeft  = borderLeft,
-        highlightBar = highlightBar,
         nameLbl     = nameLbl,
         statusLbl   = statusLbl,
         iconLbl     = iconLbl,
@@ -513,45 +434,6 @@ end
 -- 实时更新（每帧，不重建 UI）
 -- ============================================================================
 
---- 更新边框四段填充（顺时针进度 0~1）
----@param refs table 技能项引用
----@param progress number 0~1
----@param borderColor table RGBA
-local function UpdateBorder(refs, progress, borderColor)
-    progress = math.max(0, math.min(1, progress))
-    -- 简化：用百分比宽高模拟（实际周长分四段）
-    -- 上(0~0.25)→右(0.25~0.5)→下(0.5~0.75)→左(0.75~1)
-    local frac = 0.25
-
-    -- 上边框
-    local topProg = math.min(progress / frac, 1)
-    refs.borderTop:SetStyle({
-        width = string.format("%.1f%%", topProg * 100),
-        backgroundColor = borderColor,
-    })
-
-    -- 右边框
-    local rightProg = math.max(0, math.min((progress - frac) / frac, 1))
-    refs.borderRight:SetStyle({
-        height = string.format("%.1f%%", rightProg * 100),
-        backgroundColor = borderColor,
-    })
-
-    -- 下边框
-    local bottomProg = math.max(0, math.min((progress - frac * 2) / frac, 1))
-    refs.borderBottom:SetStyle({
-        width = string.format("%.1f%%", bottomProg * 100),
-        backgroundColor = borderColor,
-    })
-
-    -- 左边框
-    local leftProg = math.max(0, math.min((progress - frac * 3) / frac, 1))
-    refs.borderLeft:SetStyle({
-        height = string.format("%.1f%%", leftProg * 100),
-        backgroundColor = borderColor,
-    })
-end
-
 --- 每帧更新所有技能项的 CD/Buff 视觉
 function P.UpdateSkillItems()
     local IdleMode = require("IdleMode")
@@ -560,46 +442,36 @@ function P.UpdateSkillItems()
     for _, st in ipairs(states) do
         local refs = skillItemRefs_[st.id]
         if refs then
-            local ic = refs.ic
-
-            if st.cdRemaining > 0 then
-                -- CD 中：灰色，边框进度条
-                local cdTotal = IdleMode.GetSkillCooldown(st.id)
-                local cdProg = (cdTotal > 0) and (1 - st.cdRemaining / cdTotal) or 0
-
-                refs.innerPanel:SetStyle({ backgroundColor = COLORS.bgCooldown })
+            if st.buffRemaining and st.buffRemaining > 0 then
+                -- buff 激活中：绿色高亮
+                refs.outer:SetStyle({
+                    imageTint = { 40, 120, 70, 220 },
+                })
+                refs.nameLbl:SetStyle({ fontColor = COLORS.textBuff })
+                refs.statusLbl:SetStyle({
+                    text = string.format("%.1fs", st.buffRemaining),
+                    fontColor = COLORS.buffHighlight,
+                })
+            elseif st.cdRemaining > 0 then
+                -- CD 中：灰色调
+                refs.outer:SetStyle({
+                    imageTint = { 60, 60, 80, 200 },
+                })
                 refs.nameLbl:SetStyle({ fontColor = COLORS.textCooldown })
                 refs.statusLbl:SetStyle({
                     text = string.format("%.0fs", math.ceil(st.cdRemaining)),
                     fontColor = COLORS.statusCD,
                 })
-                refs.highlightBar:SetStyle({
-                    backgroundGradient = {
-                        type = "linear", direction = "to-bottom",
-                        from = { 80, 70, 100, 40 },
-                        to = { 80, 70, 100, 0 },
-                    },
-                })
-                refs.outer:SetStyle({ backgroundColor = COLORS.borderDim })
-                UpdateBorder(refs, cdProg, { ic[1], ic[2], ic[3], 180 })
-
             else
-                -- 就绪（自动释放，短暂闪烁后又进入 CD）
-                refs.innerPanel:SetStyle({ backgroundColor = COLORS.bgReady })
+                -- 就绪
+                refs.outer:SetStyle({
+                    imageTint = nil,
+                })
                 refs.nameLbl:SetStyle({ fontColor = COLORS.textReady })
                 refs.statusLbl:SetStyle({
                     text = "就绪",
                     fontColor = COLORS.statusReady,
                 })
-                refs.highlightBar:SetStyle({
-                    backgroundGradient = {
-                        type = "linear", direction = "to-bottom",
-                        from = COLORS.innerHighlight,
-                        to = { COLORS.innerHighlight[1], COLORS.innerHighlight[2], COLORS.innerHighlight[3], 0 },
-                    },
-                })
-                refs.outer:SetStyle({ backgroundColor = COLORS.borderDim })
-                UpdateBorder(refs, 1, COLORS.borderReady)
             end
         end
     end
@@ -645,10 +517,12 @@ function P.CreateSkillPickPopup(choices, onPick)
                             width = 40, height = 40,
                             justifyContent = "center", alignItems = "center",
                             borderRadius = 10,
-                            backgroundColor = { ic[1], ic[2], ic[3], 60 },
-                            borderColor = { ic[1], ic[2], ic[3], 120 },
-                            borderWidth = 1,
-                            children = {
+                            backgroundColor = cfg.iconImage and { 0, 0, 0, 0 } or { ic[1], ic[2], ic[3], 60 },
+                            borderColor = cfg.iconImage and { 0, 0, 0, 0 } or { ic[1], ic[2], ic[3], 120 },
+                            borderWidth = cfg.iconImage and 0 or 1,
+                            backgroundImage = cfg.iconImage or nil,
+                            backgroundFit = cfg.iconImage and "contain" or nil,
+                            children = cfg.iconImage and {} or {
                                 UI.Label {
                                     text = cfg.icon or string.sub(cfg.name, 1, 3),
                                     fontSize = 18,

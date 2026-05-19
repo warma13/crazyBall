@@ -62,6 +62,8 @@ local comboTimer = 0         -- 连击窗口剩余时间
 
 -- CD 主动技能运行时状态（不持久化，每次 Enter 重建）
 local skillCooldowns = {}    -- { [skillId] = remainingCD }
+local skillBuffTimers = {}   -- { [skillId] = remainingDuration } 持续型技能 buff
+local splitWaveTimer  = 0    -- 分裂风暴：距下一波分裂的倒计时
 
 -- 缓存的币种字符串
 local cachedGoldStr = ""
@@ -158,7 +160,7 @@ function M.InitPegs()
     for row = 1, CONFIG.PEG_ROWS do
         local y = contentTop + row * rowSpacing
         local isOdd = (row % 2 == 1)
-        local pegsInRow = isOdd and math_max(slotCount - 1, 2) or math_max(slotCount, 3)
+        local pegsInRow = isOdd and math_max(slotCount + 1, 4) or math_max(slotCount + 2, 5)
         for col = 1, pegsInRow do
             local x
             if isOdd then
@@ -587,44 +589,9 @@ local function ExecuteInstantSkill(skillId)
         print(string.format("[IdleMode] Skill peg_explosion: %d pegs x %d gold = %s total",
             pegCount, goldPerPeg, State.FormatNumber(totalGold)))
 
-    -- ── split_burst：场上所有弹珠立即分裂 ──
+    -- ── split_burst：现在是持续型技能，不再走瞬发路径 ──
     elseif skillId == "split_burst" then
-        local splitCount = cfg.baseSplitCount + (lv - 1) * cfg.splitPerLv
-        local currentBalls = {}
-        for _, b in ipairs(balls) do
-            if b.alive then
-                currentBalls[#currentBalls + 1] = b
-            end
-        end
-        local spawned = 0
-        for _, b in ipairs(currentBalls) do
-            for si = 1, splitCount do
-                if #balls < CONFIG.MAX_BALLS then
-                    local angle = (si - 1) / splitCount * math.pi * 2 + math_random() * 0.5
-                    local speed = 40 * bs
-                    balls[#balls + 1] = {
-                        x = b.x + math_cos(angle) * b.radius,
-                        y = b.y + math_sin(angle) * b.radius,
-                        vx = b.vx * 0.5 + math_cos(angle) * speed,
-                        vy = b.vy * 0.5 + math_sin(angle) * speed,
-                        radius = b.radius * 0.8,
-                        typeIndex = b.typeIndex,
-                        value = b.value * 0.6,
-                        ballCoinValue = (b.ballCoinValue or b.value) * 0.6,
-                        goldCoinValue = (b.goldCoinValue or b.value) * 0.6,
-                        trail = {},
-                        alive = true,
-                        pegHits = 0,
-                        aliveTime = 0,
-                        baseRadius = b.baseRadius * 0.8,
-                    }
-                    spawned = spawned + 1
-                    gameState.idleBallsDropped = gameState.idleBallsDropped + 1
-                end
-            end
-        end
-        print(string.format("[IdleMode] Skill split_burst: %d balls x %d splits = %d new",
-            #currentBalls, splitCount, spawned))
+        M._doSplitWave(cfg, lv)
 
     -- ── slot_jackpot：所有底袋同时喷出金币奖励 ──
     elseif skillId == "slot_jackpot" then
@@ -657,6 +624,49 @@ local function ExecuteInstantSkill(skillId)
     end
 end
 
+--- 分裂风暴：执行一波分裂（仅分裂非分裂子弹）
+---@param cfg table 技能配置
+---@param lv number 技能等级
+function M._doSplitWave(cfg, lv)
+    local splitCount = cfg.baseSplitCount + (lv - 1) * (cfg.splitPerLv or 0)
+    local bs = boardScale or 1
+    local currentBalls = {}
+    for _, b in ipairs(balls) do
+        if b.alive and not b.splitChild then
+            currentBalls[#currentBalls + 1] = b
+        end
+    end
+    local spawned = 0
+    for _, b in ipairs(currentBalls) do
+        for si = 1, splitCount do
+            if #balls < CONFIG.MAX_BALLS then
+                local angle = (si - 1) / splitCount * math.pi * 2 + math_random() * 0.5
+                local speed = 40 * bs
+                balls[#balls + 1] = {
+                    x = b.x + math_cos(angle) * b.radius,
+                    y = b.y + math_sin(angle) * b.radius,
+                    vx = b.vx * 0.5 + math_cos(angle) * speed,
+                    vy = b.vy * 0.5 + math_sin(angle) * speed,
+                    radius = b.radius * 0.8,
+                    typeIndex = b.typeIndex,
+                    value = b.value * 0.6,
+                    ballCoinValue = (b.ballCoinValue or b.value) * 0.6,
+                    goldCoinValue = (b.goldCoinValue or b.value) * 0.6,
+                    trail = {},
+                    alive = true,
+                    pegHits = 0,
+                    aliveTime = 0,
+                    baseRadius = b.baseRadius * 0.8,
+                    splitChild = true,  -- 标记为分裂子弹，不可再分裂
+                }
+                spawned = spawned + 1
+                gameState.idleBallsDropped = gameState.idleBallsDropped + 1
+            end
+        end
+    end
+    print(string.format("[IdleMode] Split wave: %d balls x %d splits = %d new", #currentBalls, splitCount, spawned))
+end
+
 --- 激活技能（玩家点击技能按钮时调用）
 ---@param skillId string
 ---@return boolean 是否成功激活
@@ -666,16 +676,60 @@ function M.ActivateSkill(skillId)
     local cfg = M.GetSkillConfig(skillId)
     if not cfg then return false end
 
-    ExecuteInstantSkill(skillId)
+    if cfg.skillType == "duration" then
+        -- 持续型技能：启动 buff 计时器
+        local lv = M.GetSkillLevel(skillId)
+        local dur = (cfg.baseDuration or 5) + (lv - 1) * (cfg.durationPerLv or 1)
+        skillBuffTimers[skillId] = dur
+        -- 分裂风暴：立即执行第一波，并重置波次计时器
+        if skillId == "split_burst" then
+            M._doSplitWave(cfg, lv)
+            splitWaveTimer = cfg.splitInterval or 2.0
+        end
+        print(string.format("[IdleMode] Activated duration skill: %s (%.1fs)", skillId, dur))
+    else
+        -- 瞬发型技能
+        ExecuteInstantSkill(skillId)
+    end
     skillCooldowns[skillId] = M.GetSkillCooldown(skillId)
 
     print(string.format("[IdleMode] Activated skill: %s", skillId))
     return true
 end
 
+--- 查询持续型技能 buff 剩余时间
+---@param skillId string
+---@return number 剩余秒数（0=未激活）
+function M.GetBuffRemaining(skillId)
+    return skillBuffTimers[skillId] or 0
+end
+
 --- 每帧更新技能 CD 和 buff 计时器（CD 满后自动释放）
 ---@param dt number
 function M.UpdateSkills(dt)
+    -- 更新 buff 持续时间
+    for skillId, remaining in pairs(skillBuffTimers) do
+        if remaining > 0 then
+            remaining = remaining - dt
+            if remaining <= 0 then
+                remaining = 0
+                print(string.format("[IdleMode] Buff expired: %s", skillId))
+            end
+            skillBuffTimers[skillId] = remaining
+        end
+    end
+    -- 分裂风暴：buff 期间周期性分裂
+    if (skillBuffTimers["split_burst"] or 0) > 0 then
+        splitWaveTimer = splitWaveTimer - dt
+        if splitWaveTimer <= 0 then
+            local cfg = M.GetSkillConfig("split_burst")
+            local lv = M.GetSkillLevel("split_burst")
+            if cfg and lv > 0 then
+                M._doSplitWave(cfg, lv)
+                splitWaveTimer = cfg.splitInterval or 2.0
+            end
+        end
+    end
     -- 更新 CD 计时器
     for skillId, remaining in pairs(skillCooldowns) do
         if remaining > 0 then
@@ -693,7 +747,7 @@ function M.UpdateSkills(dt)
 end
 
 --- 获取所有已获得技能的运行时状态（供 UI 使用）
----@return table[] { id, cfg, level, cdRemaining, ready }
+---@return table[] { id, cfg, level, cdRemaining, ready, buffRemaining }
 function M.GetSkillStates()
     local result = {}
     for _, cfg in ipairs(Config.IDLE.SKILLS) do
@@ -705,6 +759,7 @@ function M.GetSkillStates()
                 level = lv,
                 cdRemaining = skillCooldowns[cfg.id] or 0,
                 ready = M.IsSkillReady(cfg.id),
+                buffRemaining = skillBuffTimers[cfg.id] or 0,
             }
         end
     end
@@ -1609,6 +1664,7 @@ function M.Enter()
     M._ballAutoDropTimer = 0
     M._skillTriggerLock = false   -- 防止每帧重复弹窗
     skillCooldowns = {}           -- 重置技能冷却
+    skillBuffTimers = {}          -- 重置技能 buff
     gameState.gamePhase = "idle"
     -- 创建下半屏 UI
     local IdleUI = require("IdleUI")
@@ -1867,11 +1923,12 @@ function M.Render(vg, w, h)
     gameState.contentTop    = contentTop
     gameState.contentBottom = contentBottom
 
-    -- ======= 上半屏：棋盘（复用主游戏渲染） =======
+    -- ======= 上半屏：棋盘（复用主游戏渲染，含街机边框） =======
     Renderer.DrawBackground(vg, w, h)
 
     nvgSave(vg)
     nvgScissor(vg, 0, 0, w, splitY + 2)
+    Renderer.DrawBoard(vg, w, h)
     Renderer.DrawSlots(vg)
     Renderer.DrawPegs(vg)
     Renderer.DrawBalls(vg)

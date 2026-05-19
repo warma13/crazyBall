@@ -104,6 +104,7 @@ function P.CreateEnchantButton(cb)
                 pointerEvents = "none",
             },
             UI.Label {
+                id = "enchantBtnLabel",
                 text = label,
                 fontSize = 11,
                 fontColor = count > 0 and { 220, 180, 255, 255 } or { 180, 160, 220, 220 },
@@ -485,6 +486,46 @@ function P.CreateGlobalUpgradeRow(cb)
         gap = 5,
         children = children,
     }
+end
+
+--- 轻量刷新附魔按钮（仅更新文字和颜色，不重建 DOM）
+function P.UpdateEnchantButton()
+    local root = State.uiRoot_
+    if not root then return end
+
+    local btn = root:FindById("enchantBtn")
+    if not btn then return end
+
+    local ballIndex = gameState.selectedBallType
+    local level = gameState.ballLevels[ballIndex]
+    local isUnlocked = level > 0
+    local count = Enchantment.GetCount(ballIndex)
+    local totalLv = Enchantment.GetTotalLevel(ballIndex)
+
+    local label, bgColor, borderC
+    if not isUnlocked then
+        label = "附魔"
+        bgColor = { 40, 40, 50, 200 }
+        borderC = { 60, 60, 80, 150 }
+    elseif count > 0 then
+        label = "附魔×" .. totalLv
+        bgColor = { 80, 50, 120, 220 }
+        borderC = { 180, 130, 255, 220 }
+    else
+        label = "附魔"
+        bgColor = { 60, 40, 80, 220 }
+        borderC = { 160, 120, 220, 200 }
+    end
+
+    btn:SetStyle({ backgroundColor = bgColor, borderColor = borderC })
+
+    local lbl = root:FindById("enchantBtnLabel")
+    if lbl then
+        lbl:SetStyle({
+            text = label,
+            fontColor = count > 0 and { 220, 180, 255, 255 } or { 180, 160, 220, 220 },
+        })
+    end
 end
 
 return P

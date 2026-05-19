@@ -8,6 +8,7 @@ local State = require("State")
 local EventBus = require("EventBus")
 local Runes = require("Runes")
 local Enchantment = require("Enchantment")
+local AdHelper = require("AdHelper")
 ---@diagnostic disable-next-line: undefined-global
 local sdk = sdk
 
@@ -99,9 +100,7 @@ function M.AdBallUpgrade(index)
     if level == 0 and index > 1 and gameState.ballLevels[index - 1] == 0 then
         return
     end
-    gameState.paused = true
-    sdk:ShowRewardVideoAd(function(result)
-        gameState.paused = false
+    AdHelper.ShowRewardAd(function(result)
         if result.success then
             local prevSelected = gameState.selectedBallType
             if gameState.ballLevels[index] == 0 then
@@ -120,9 +119,7 @@ end
 function M.AdUpgradeEffect(effectId)
     local level = M.GetEffectLevel(effectId)
     if level == 0 then return end
-    gameState.paused = true
-    sdk:ShowRewardVideoAd(function(result)
-        gameState.paused = false
+    AdHelper.ShowRewardAd(function(result)
         if result.success then
             gameState.drawnEffects[effectId] = (gameState.drawnEffects[effectId] or 0) + 1
             EventBus.emit("effect_upgraded", { id = effectId })
@@ -135,9 +132,7 @@ end
 function M.AdDrawEffect()
     local pool = M.BuildNormalPool()
     if #pool == 0 then return end
-    gameState.paused = true
-    sdk:ShowRewardVideoAd(function(result)
-        gameState.paused = false
+    AdHelper.ShowRewardAd(function(result)
         if result.success then
             local freshPool = M.BuildNormalPool()
             if #freshPool == 0 then return end
@@ -392,10 +387,8 @@ function M.OnAdDrawEffect()
     local adPool = M.BuildAdPool()
     if #adPool == 0 then return nil end
 
-    -- 调用广告 SDK
-    gameState.paused = true
-    sdk:ShowRewardVideoAd(function(result)
-        gameState.paused = false
+    -- 调用广告（支持免广券）
+    AdHelper.ShowRewardAd(function(result)
         if result.success then
             -- 重新获取池（防止异步期间状态变化）
             local pool = M.BuildAdPool()

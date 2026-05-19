@@ -20,6 +20,10 @@ local IMG = {
 }
 local CARD_SLICE = { top = 20, right = 20, bottom = 20, left = 20 }
 
+-- ======= 轻量更新引用 =======
+-- { [upgradeId] = { canAfford=bool } }
+local upgradeRefs = {}
+
 --- 获取指定升级的当前等级
 ---@param upgradeId string
 ---@return number
@@ -92,6 +96,7 @@ function P.CreateUpgradeHeader()
             },
             -- 金币数字
             UI.Label {
+                id = "upgGoldLabel",
                 text = goldStr,
                 fontSize = 14,
                 fontColor = { 255, 220, 60, 255 },
@@ -110,10 +115,16 @@ function P.CreateUpgradeHeader()
     }
 end
 
+--- 清空轻量更新引用
+function P.ResetRefs()
+    upgradeRefs = {}
+end
+
 --- 创建升级列表面板
 ---@param cb table 回调表
 ---@return table UI 面板
 function P.CreateUpgradeList(cb)
+    P.ResetRefs()
     local items = {}
     local playerLevel = gameState.idleMaxUnlockedLevel or 1
 
@@ -145,7 +156,7 @@ function P.CreateLockedItem(upgCfg, reqLv)
         id = "idleUpg_locked_" .. upgCfg.id,
         width = "100%",
         flexDirection = "row",
-        padding = { 8, 7, 8, 7 },
+        padding = { 8, 12, 8, 12 },
         backgroundImage = IMG.CARD,
         backgroundFit = "sliced",
         backgroundSlice = CARD_SLICE,
@@ -232,11 +243,16 @@ function P.CreateUpgradeItem(cb, upgCfg, index)
         costText = State.FormatNumber(cost)
     end
 
-    return UI.Panel {
-        id = "idleUpg_" .. upgCfg.id,
+    -- 唯一 id
+    local cardId = "upgCard_" .. upgCfg.id
+    local btnId  = "upgBtn_" .. upgCfg.id
+    local costLblId = "upgCost_" .. upgCfg.id
+
+    local card = UI.Panel {
+        id = cardId,
         width = "100%",
         flexDirection = "row",
-        padding = { 8, 7, 8, 7 },
+        padding = { 8, 12, 8, 12 },
         backgroundImage = cardImg,
         backgroundFit = "sliced",
         backgroundSlice = CARD_SLICE,
@@ -308,6 +324,7 @@ function P.CreateUpgradeItem(cb, upgCfg, index)
             },
             -- 右侧升级按钮
             UI.Panel {
+                id = btnId,
                 minWidth = 52,
                 padding = { 8, 5, 8, 5 },
                 borderRadius = 6,
@@ -343,6 +360,7 @@ function P.CreateUpgradeItem(cb, upgCfg, index)
                                     backgroundImage = "image/gold_coin.png",
                                 },
                                 UI.Label {
+                                    id = costLblId,
                                     text = costText,
                                     fontSize = 12,
                                     fontColor = canAfford
@@ -356,6 +374,76 @@ function P.CreateUpgradeItem(cb, upgCfg, index)
             },
         },
     }
+
+    -- 记录引用供轻量更新
+    if not isMaxed then
+        upgradeRefs[upgCfg.id] = { canAfford = canAfford, iconColor = iconColor }
+    end
+
+    return card
+end
+
+--- 轻量更新 header 中的金币数字（不重建）
+---@param root table UI 根节点
+function P.UpdateHeader(root)
+    if not root then return end
+    local lbl = root:FindById("upgGoldLabel")
+    if lbl then
+        lbl:SetStyle({ text = State.FormatNumber(gameState.idleCoins) })
+    end
+end
+
+--- 轻量更新所有升级项的 canAfford 样式（不重建）
+---@param root table UI 根节点
+---@return boolean changed
+function P.UpdateAfford(root)
+    if not root then return false end
+    local changed = false
+
+    for _, upgCfg in ipairs(Config.IDLE.UPGRADES) do
+        local ref = upgradeRefs[upgCfg.id]
+        if ref then
+            local lv = GetLevel(upgCfg.id)
+            local cost = Config.GetUpgradeCost(upgCfg, lv)
+            local canAfford = (lv < upgCfg.maxLevel) and (gameState.idleCoins >= cost)
+
+            if canAfford ~= ref.canAfford then
+                ref.canAfford = canAfford
+                changed = true
+                local ic = ref.iconColor
+                -- 更新卡片背景
+                local card = root:FindById("upgCard_" .. upgCfg.id)
+                if card then
+                    card:SetStyle({
+                        backgroundImage = canAfford and IMG.CARD_HL or IMG.CARD,
+                        imageTint = canAfford and { ic[1], ic[2], ic[3], 200 } or nil,
+                    })
+                end
+                -- 更新按钮颜色
+                local btn = root:FindById("upgBtn_" .. upgCfg.id)
+                if btn then
+                    btn:SetStyle({
+                        backgroundColor = canAfford
+                            and { 50, 130, 70, 230 }
+                            or { 40, 42, 58, 200 },
+                        borderColor = canAfford
+                            and { 80, 200, 100, 150 }
+                            or { 55, 60, 80, 100 },
+                    })
+                end
+                -- 更新费用文本颜色
+                local costLbl = root:FindById("upgCost_" .. upgCfg.id)
+                if costLbl then
+                    costLbl:SetStyle({
+                        fontColor = canAfford
+                            and { 255, 240, 180, 255 }
+                            or { 110, 115, 140, 180 },
+                    })
+                end
+            end
+        end
+    end
+    return changed
 end
 
 return P
