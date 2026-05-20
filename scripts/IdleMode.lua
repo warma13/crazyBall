@@ -49,8 +49,19 @@ local gridCols, gridRows = 0, 0
 local gridOffsetX, gridOffsetY = 0, 0
 local _nearbyResult = {}
 
+-- NanoVG 图片缓存
+local imgTopBarBtn = nil   -- 顶部关卡进度按钮背景
+local imgBackBtn   = nil   -- 返回按钮图片
+local imgRankBg    = nil   -- 排行榜胶囊背景
+
+-- 放置模式排行榜
+local IDLE_RANK_KEY = "idle_rank"
+local idleMyRank = nil       -- 我的排名（number 或 nil=未上榜/未查询）
+local idleRankUploaded = -1  -- 已上传的分数（避免重复上传相同值）
+
 -- UI 面板状态（TopBar 返回按钮仍用 NanoVG）
 local backBtnRect = nil
+local rankBtnRect = nil  -- 排行榜点击区域
 
 -- 投放冷却
 local dropCooldownTimer = 0  -- 剩余冷却时间
@@ -292,14 +303,20 @@ end
 ---@return number
 function M.GetCritChance()
     local lv = M.GetUpgradeLevel("crit_chance")
-    return lv * 1.5  -- perLevel=1.5%
+    local base = lv * 1.5  -- perLevel=1.5%
+    -- 暴击星辰加成
+    local critExtra, _ = M.GetCritStarBonus()
+    return base + critExtra
 end
 
 --- 获取暴击倍率
 ---@return number
 function M.GetCritMult()
     local lv = M.GetUpgradeLevel("crit_mult")
-    return 2.0 + lv * 0.12  -- 基础2x + perLevel=0.12
+    local base = 2.0 + lv * 0.12  -- 基础2x + perLevel=0.12
+    -- 暴击星辰加成
+    local _, multExtra = M.GetCritStarBonus()
+    return base + multExtra
 end
 
 --- 获取多重投放概率（受 multi_drop 影响）
@@ -351,8 +368,12 @@ end
 ---@return number 每次加成比例, number 连击窗口秒数
 function M.GetComboStorm()
     local lv = M.GetUpgradeLevel("combo_storm")
-    if lv <= 0 then return 0, 0 end
-    return lv * 0.03, 3.0
+    if lv <= 0 and M.GetPrestigeAbilityLevel("combo_resonance") <= 0 then return 0, 0 end
+    local basePerHit = lv * 0.03
+    local baseWindow = lv > 0 and 3.0 or 0
+    -- 连击共鸣加成
+    local extraWindow, extraPercent = M.GetComboResonanceBonus()
+    return basePerHit + extraPercent, baseWindow + extraWindow
 end
 
 --- 获取口袋祝福触发概率和倍数（受 slot_fortune 影响）
@@ -369,17 +390,161 @@ end
 ---@return number 最终倍率 (1.0+)
 function M.GetEarningAmp()
     local lv = M.GetUpgradeLevel("earning_amp")
-    return 1.0 + lv * 0.05
+    local base = 1.0 + lv * 0.05
+    -- 星云倍增加成
+    local nebulaLv = M.GetPrestigeAbilityLevel("nebula_multiply")
+    return base + nebulaLv * 0.08
+end
+
+-- ============================================================================
+-- 转生能力系统（星尘消费，永久生效）
+-- ============================================================================
+
+--- 获取转生能力等级
+---@param abilityId string
+---@return number
+function M.GetPrestigeAbilityLevel(abilityId)
+    return gameState.idlePrestigeAbilities[abilityId] or 0
+end
+
+--- 检查 tier 是否已解锁
+---@param tier number
+---@return boolean
+function M.IsTierUnlocked(tier)
+    if tier <= 1 then return true end
+    -- tier N 需要任一 tier(N-1) 的能力 >= Lv.3
+    local prevTier = tier - 1
+    for _, cfg in ipairs(Config.IDLE.PRESTIGE_ABILITIES) do
+        if cfg.tier == prevTier then
+            local lv = M.GetPrestigeAbilityLevel(cfg.id)
+            if lv >= 3 then return true end
+        end
+    end
+    return false
+end
+
+--- 计算转生可获得的星尘数量
+---@return number
+function M.GetStardustReward()
+    local threshold = BigNum.new(Config.IDLE.PRESTIGE_THRESHOLD)
+    -- 虚空之力降低门槛
+    local voidLv = M.GetPrestigeAbilityLevel("void_force")
+    if voidLv > 0 then
+        local reduction = 1.0 - voidLv * 0.04
+        threshold = threshold * math_max(0.50, reduction)
+    end
+    local totalEarned = gameState.idleTotalEarned
+    if totalEarned < threshold then return 0 end
+    -- ratio = totalEarned / threshold (BigNum -> number)
+    local ratio = BigNum.toNumber(totalEarned / threshold)
+    if ratio <= 0 then return 0 end
+    local logVal = math.log(ratio, 10)
+    local countBonus = math_floor(gameState.idlePrestigeCount / 3)
+    local base = math_floor(logVal * (1 + gameState.idlePrestigeCount * 0.25)) + 1 + countBonus
+    -- 超新星加成
+    local supernovaLv = M.GetPrestigeAbilityLevel("supernova")
+    if supernovaLv > 0 then
+        base = math_floor(base * (1 + supernovaLv * 0.15))
+    end
+    return math_max(1, base)
+end
+
+--- 购买转生能力
+---@param abilityId string
+---@return boolean 是否购买成功
+function M.PurchasePrestigeAbility(abilityId)
+    local cfg = Config.GetPrestigeAbilityConfig(abilityId)
+    if not cfg then return false end
+    -- 检查 tier 解锁
+    if not M.IsTierUnlocked(cfg.tier) then return false end
+    local currentLv = M.GetPrestigeAbilityLevel(abilityId)
+    -- 检查等级上限
+    if cfg.maxLevel and currentLv >= cfg.maxLevel then return false end
+    local cost = Config.GetPrestigeAbilityCost(cfg, currentLv)
+    if cost == math.huge then return false end
+    if gameState.idleStardust < cost then return false end
+    gameState.idleStardust = gameState.idleStardust - cost
+    gameState.idlePrestigeAbilities[abilityId] = currentLv + 1
+    -- 保存
+    local SaveSystem = require("SaveSystem")
+    SaveSystem.Save()
+    State.uiDirty = true
+    return true
+end
+
+--- 获取转生后初始金币（星光积蓄效果）
+---@return number
+function M.GetPrestigeStartCoins()
+    local lv = M.GetPrestigeAbilityLevel("starlight_savings")
+    if lv <= 0 then return 0 end
+    return lv * 500 * math_max(1, gameState.idlePrestigeCount)
+end
+
+--- 获取弹珠精通有效等级加成
+---@return number
+function M.GetBallMasteryBonus()
+    return M.GetPrestigeAbilityLevel("ball_mastery")
+end
+
+--- 获取技能余烬 CD 减免比例（0~0.40）
+---@return number
+function M.GetSkillEmberCDReduction()
+    local lv = M.GetPrestigeAbilityLevel("skill_ember")
+    return math_min(0.40, lv * 0.04)
+end
+
+--- 获取技能超载效果加成倍率
+---@return number 1.0+
+function M.GetSkillOverloadMult()
+    local lv = M.GetPrestigeAbilityLevel("skill_overload")
+    return 1.0 + lv * 0.10
+end
+
+--- 获取分裂共鸣额外分裂数
+---@return number 分裂球额外数, number 风暴额外数
+function M.GetSplitResonanceBonus()
+    local lv = M.GetPrestigeAbilityLevel("split_resonance")
+    return lv * 1, lv * 2
+end
+
+--- 获取暴击星辰加成
+---@return number 额外暴击率%, number 额外暴击倍率
+function M.GetCritStarBonus()
+    local lv = M.GetPrestigeAbilityLevel("crit_star")
+    return lv * 2, lv * 0.15
+end
+
+--- 获取连击共鸣加成
+---@return number 额外窗口秒数, number 额外加成比例
+function M.GetComboResonanceBonus()
+    local lv = M.GetPrestigeAbilityLevel("combo_resonance")
+    return lv * 0.4, lv * 0.05
 end
 
 -- ============================================================================
 -- 弹珠能力升级系统（球币消费，永久生效，转生不重置）
 -- ============================================================================
 
---- 获取当前关卡对应的弹珠类型索引（跟随当前关卡）
+--- 获取当前关卡对应的弹珠类型索引（循环：13关一轮）
 ---@return number typeIndex
 function M.GetCurrentBallType()
-    return math_min(gameState.idleLevel, #Config.BALL_TYPES)
+    local total = #Config.BALL_TYPES
+    return ((gameState.idleLevel - 1) % total) + 1
+end
+
+--- 获取当前已完成的循环轮数（0=第一轮，1=第二轮...）
+---@return number cycleCount
+function M.GetCycleCount()
+    local total = #Config.BALL_TYPES
+    return math_floor((gameState.idleLevel - 1) / total)
+end
+
+--- 获取循环倍率（每轮初始价值翻倍: 2^cycleCount）
+---@return number multiplier
+function M.GetCycleMultiplier()
+    local cycle = M.GetCycleCount()
+    if cycle <= 0 then return 1 end
+    return 2 ^ cycle
 end
 
 -- ============================================================================
@@ -403,14 +568,24 @@ function M.GetSkillConfig(skillId)
     return nil
 end
 
---- 获取技能 CD（受等级影响）
+--- 获取技能 CD（渐进递减公式，受等级和技能余烬影响）
+--- 公式: minCD + (baseCD - minCD) / (1 + k * (lv-1))
 ---@param skillId string
 ---@return number CD 秒数
 function M.GetSkillCooldown(skillId)
     local lv = M.GetSkillLevel(skillId)
     local cfg = M.GetSkillConfig(skillId)
     if not cfg then return 999 end
-    return math_max(cfg.minCooldown or 5, cfg.cooldown - (lv - 1) * (cfg.cdPerLevel or 0))
+    local minCD = cfg.minCooldown or 5
+    local k = cfg.cdDiminishK or 0.15
+    local cd = minCD + (cfg.cooldown - minCD) / (1 + k * (lv - 1))
+    -- 技能余烬 CD 减免
+    local emberReduction = M.GetSkillEmberCDReduction()
+    if emberReduction > 0 then
+        cd = cd * (1 - emberReduction)
+        cd = math_max(minCD, cd)
+    end
+    return cd
 end
 
 --- 获取技能 CD 剩余时间
@@ -418,6 +593,27 @@ end
 ---@return number 剩余秒数（0=就绪）
 function M.GetSkillCDRemaining(skillId)
     return skillCooldowns[skillId] or 0
+end
+
+--- 导出所有技能 CD（供存档序列化）
+---@return table<string, number>
+function M.ExportSkillCooldowns()
+    local out = {}
+    for id, cd in pairs(skillCooldowns) do
+        if cd > 0 then out[id] = cd end
+    end
+    return out
+end
+
+--- 导入技能 CD（存档反序列化后调用）
+---@param data table<string, number>?
+function M.ImportSkillCooldowns(data)
+    skillCooldowns = {}
+    if data then
+        for id, cd in pairs(data) do
+            skillCooldowns[id] = cd
+        end
+    end
 end
 
 --- 技能是否就绪（已获得 + CD 完毕）
@@ -487,16 +683,20 @@ local function ExecuteInstantSkill(skillId)
 
     local bs = boardScale
 
+    -- 技能超载倍率（所有技能效果 +10%/lv）
+    local overload = M.GetSkillOverloadMult()
+
     -- ── mass_drop / ball_rain：经典掉球 ──
     if skillId == "mass_drop" or skillId == "ball_rain" then
         local count = cfg.baseBallCount + (lv - 1) * (cfg.ballCountPerLv or 0)
+        count = math_floor(count * overload)
         SpawnBalls(count)
-        print(string.format("[IdleMode] Skill %s: dropped %d balls", skillId, count))
+        print(string.format("[IdleMode] Skill %s: dropped %d balls (overload x%.2f)", skillId, count, overload))
 
     -- ── giant_ball：投放一颗超大弹珠 ──
     elseif skillId == "giant_ball" then
         local sizeMult = cfg.baseSize + (lv - 1) * cfg.sizePerLv
-        local valMult = cfg.baseValueMult + (lv - 1) * cfg.valueMultPerLv
+        local valMult = cfg.baseValueMult * (cfg.valueGrowth or 1.12) ^ (lv - 1) * overload
         local cx = (contentLeft + contentRight) / 2
         SpawnBalls(1, {
             x = cx,
@@ -505,11 +705,11 @@ local function ExecuteInstantSkill(skillId)
             vxSpread = 10,
             noPegCollision = true,
         })
-        print(string.format("[IdleMode] Skill giant_ball: size=%.1fx value=%dx", sizeMult, valMult))
+        print(string.format("[IdleMode] Skill giant_ball: size=%.1fx value=%.0fx", sizeMult, valMult))
 
     -- ── fireworks：从棋盘中心爆出多波弹珠，向四周扩散 ──
     elseif skillId == "fireworks" then
-        local waves = cfg.baseWaves + (lv - 1) * cfg.wavesPerLv
+        local waves = math_floor((cfg.baseWaves + (lv - 1) * cfg.wavesPerLv) * overload)
         local perWave = cfg.ballsPerWave
         local cx = (contentLeft + contentRight) / 2
         local cy = (contentTop + contentBottom) / 2
@@ -547,8 +747,8 @@ local function ExecuteInstantSkill(skillId)
 
     -- ── golden_shower：从天上均匀降下一排高价值金色弹珠 ──
     elseif skillId == "golden_shower" then
-        local count = cfg.baseBallCount + (lv - 1) * cfg.ballCountPerLv
-        local valMult = cfg.baseValueMult + (lv - 1) * cfg.valueMultPerLv
+        local count = math_floor((cfg.baseBallCount + (lv - 1) * cfg.ballCountPerLv) * overload)
+        local valMult = cfg.baseValueMult * (cfg.valueGrowth or 1.12) ^ (lv - 1) * overload
         local margin = (contentRight - contentLeft) * 0.05
         for gi = 1, count do
             if #balls < CONFIG.MAX_BALLS then
@@ -562,11 +762,11 @@ local function ExecuteInstantSkill(skillId)
                 })
             end
         end
-        print(string.format("[IdleMode] Skill golden_shower: %d golden balls x%d value", count, valMult))
+        print(string.format("[IdleMode] Skill golden_shower: %d golden balls x%.0f value", count, valMult))
 
     -- ── peg_explosion：所有钉子爆炸，每颗钉产生金币 + 钉子闪烁 ──
     elseif skillId == "peg_explosion" then
-        local goldPerPeg = cfg.baseGoldPerPeg + (lv - 1) * cfg.goldPerPegPerLv
+        local goldPerPeg = math_floor(cfg.baseGoldPerPeg * (cfg.goldGrowth or 1.15) ^ (lv - 1) * overload)
         local pegCount = #pegs
         local totalGold = goldPerPeg * pegCount * gameState.idlePrestigeMult
         State.AddIdleEarnings(totalGold)
@@ -595,7 +795,7 @@ local function ExecuteInstantSkill(skillId)
 
     -- ── slot_jackpot：所有底袋同时喷出金币奖励 ──
     elseif skillId == "slot_jackpot" then
-        local multPerSlot = cfg.baseMultPerSlot + (lv - 1) * cfg.multPerSlotPerLv
+        local multPerSlot = cfg.baseMultPerSlot * (cfg.multGrowth or 1.15) ^ (lv - 1) * overload
         local totalGold = BigNum.new(0)
         for si = 1, #slots do
             local slot = slots[si]
@@ -619,7 +819,7 @@ local function ExecuteInstantSkill(skillId)
             }
         end
         State.AddIdleEarnings(totalGold)
-        print(string.format("[IdleMode] Skill slot_jackpot: %d slots x %d mult = %s gold",
+        print(string.format("[IdleMode] Skill slot_jackpot: %d slots x %.0f mult = %s gold",
             #slots, multPerSlot, State.FormatNumber(totalGold)))
     end
 end
@@ -627,8 +827,18 @@ end
 --- 分裂风暴：执行一波分裂（仅分裂非分裂子弹）
 ---@param cfg table 技能配置
 ---@param lv number 技能等级
-function M._doSplitWave(cfg, lv)
+---@param isStorm boolean? 是否为风暴持续期间的波次（区分分裂共鸣加成）
+function M._doSplitWave(cfg, lv, isStorm)
     local splitCount = cfg.baseSplitCount + (lv - 1) * (cfg.splitPerLv or 0)
+    -- 分裂共鸣：普通分裂 +1/lv，风暴分裂 +2/lv
+    local regularExtra, stormExtra = M.GetSplitResonanceBonus()
+    if isStorm then
+        splitCount = splitCount + stormExtra
+    else
+        splitCount = splitCount + regularExtra
+    end
+    -- 技能超载
+    splitCount = math_floor(splitCount * M.GetSkillOverloadMult())
     local bs = boardScale or 1
     local currentBalls = {}
     for _, b in ipairs(balls) do
@@ -683,7 +893,7 @@ function M.ActivateSkill(skillId)
         skillBuffTimers[skillId] = dur
         -- 分裂风暴：立即执行第一波，并重置波次计时器
         if skillId == "split_burst" then
-            M._doSplitWave(cfg, lv)
+            M._doSplitWave(cfg, lv, true)  -- isStorm=true
             splitWaveTimer = cfg.splitInterval or 2.0
         end
         print(string.format("[IdleMode] Activated duration skill: %s (%.1fs)", skillId, dur))
@@ -725,7 +935,7 @@ function M.UpdateSkills(dt)
             local cfg = M.GetSkillConfig("split_burst")
             local lv = M.GetSkillLevel("split_burst")
             if cfg and lv > 0 then
-                M._doSplitWave(cfg, lv)
+                M._doSplitWave(cfg, lv, true)  -- isStorm=true
                 splitWaveTimer = cfg.splitInterval or 2.0
             end
         end
@@ -792,9 +1002,7 @@ function M.ApplySkillChoice(skillId)
     if not cfg then return end
 
     local curLv = M.GetSkillLevel(skillId)
-    if curLv < cfg.maxLevel then
-        gameState.idleSkills[skillId] = curLv + 1
-    end
+    gameState.idleSkills[skillId] = curLv + 1
 
     -- 推进阶段
     gameState.idleSkillPickCount = gameState.idleSkillPickCount + 1
@@ -818,26 +1026,12 @@ function M.ApplySkillChoice(skillId)
     SaveSystem.Save()
 end
 
---- 随机抽取3个可选技能（优先未满级、未获得的技能）
+--- 随机抽取3个可选技能（无满级限制，所有技能都可被选择升级）
 ---@return table[] 3个技能配置的数组
 function M.RollSkillChoices()
     local pool = {}
     for _, cfg in ipairs(Config.IDLE.SKILLS) do
-        local lv = M.GetSkillLevel(cfg.id)
-        if lv < cfg.maxLevel then
-            pool[#pool + 1] = cfg
-        end
-    end
-    -- 如果可选不足3个，允许已满级重复出现（不会升级）
-    if #pool < 3 then
-        for _, cfg in ipairs(Config.IDLE.SKILLS) do
-            local found = false
-            for _, p in ipairs(pool) do
-                if p.id == cfg.id then found = true; break end
-            end
-            if not found then pool[#pool + 1] = cfg end
-            if #pool >= 3 then break end
-        end
+        pool[#pool + 1] = cfg
     end
     -- Fisher-Yates 洗牌后取前3
     for i = #pool, 2, -1 do
@@ -862,11 +1056,18 @@ function M.GetCurrentBallUpgrades()
     return Config.BALL_UPGRADES  -- fallback
 end
 
---- 获取弹珠能力升级当前等级
+--- 获取弹珠能力升级当前等级（含弹珠精通加成）
 ---@param abilityId string
+---@param raw boolean? 是否返回原始等级（忽略精通加成）
 ---@return number
-function M.GetBallAbilityLevel(abilityId)
-    return gameState.idleBallAbilityLevels[abilityId] or 0
+function M.GetBallAbilityLevel(abilityId, raw)
+    local lv = gameState.idleBallAbilityLevels[abilityId] or 0
+    if raw then return lv end
+    -- 弹珠精通：所有已解锁的弹珠能力有效等级 +N
+    if lv > 0 then
+        lv = lv + M.GetBallMasteryBonus()
+    end
+    return lv
 end
 
 --- 检查指定升级项是否已解锁（前一项等级 >= unlockReq）
@@ -879,7 +1080,7 @@ function M.IsBallAbilityUnlocked(index)
     if index == 1 then return true end  -- 第一项始终可用
     local prevCfg = upgrades[index - 1]
     if not prevCfg then return true end
-    local prevLevel = M.GetBallAbilityLevel(prevCfg.id)
+    local prevLevel = M.GetBallAbilityLevel(prevCfg.id, true)  -- raw: 进度判断用原始等级
     return prevLevel >= (cfg.unlockReq or 0)
 end
 
@@ -890,7 +1091,7 @@ function M.CheckAllGoalsDone()
     local done = 0
     local total = #upgrades
     for i, cfg in ipairs(upgrades) do
-        local lv = M.GetBallAbilityLevel(cfg.id)
+        local lv = M.GetBallAbilityLevel(cfg.id, true)  -- raw: 进度判断用原始等级
         local goal = cfg.goalLevel or 1
         if lv >= goal then
             done = done + 1
@@ -917,13 +1118,14 @@ function M.PurchaseBallAbility(abilityId)
     -- 检查是否已解锁
     if not M.IsBallAbilityUnlocked(abIdx) then return false end
 
-    local level = M.GetBallAbilityLevel(abilityId)
+    local level = M.GetBallAbilityLevel(abilityId, true)  -- raw=true 用原始等级判断费用
     if level >= abCfg.maxLevel then return false end
 
     local cost = Config.GetUpgradeCost(abCfg, level)
     if not State.SpendIdleBallCoins(BigNum.new(cost)) then return false end
 
     gameState.idleBallAbilityLevels[abilityId] = level + 1
+    State.uiDirty = true
     print(string.format("[IdleMode] Ball ability %s → Lv.%d", abilityId, level + 1))
 
     -- 购买后立即检查是否所有目标达成 → 触发三选一
@@ -1452,8 +1654,17 @@ CheckSlotAutoUpgrade = function() end
 --- 确保指定关卡的持久化数据存在（首次进入时初始化）
 EnsureLevelData = function(level)
     if gameState.idleLevelData[level] then
-        -- 兼容旧存档：补充 drops 字段
         local ld = gameState.idleLevelData[level]
+        -- 瘦身 v3: 非当前关卡不保存 slots，加载后为空表，需重新初始化
+        if not ld.slots or #ld.slots == 0 then
+            local baseLevel = M.GetBaseSlotLevel()
+            local newSlots = {}
+            for i = 1, Config.IDLE.MAX_IDLE_SLOTS do
+                newSlots[i] = { kind = "good", level = baseLevel, drops = 0 }
+            end
+            ld.slots = newSlots
+        end
+        -- 兼容旧存档：补充 drops 字段
         for i = 1, #ld.slots do
             if ld.slots[i].drops == nil then
                 ld.slots[i].drops = 0
@@ -1537,15 +1748,14 @@ function M.SwitchToLevel(targetLevel)
     end
     if targetLevel == gameState.idleLevel then return true end
 
-    -- 保存当前关卡数据
-    SaveCurrentLevelData()
-
+    -- 旧关卡数据不保留，直接丢弃
     -- 清空运行时弹珠和飘字
     balls = {}
     popups = {}
     dropCooldownTimer = 0
 
-    -- 加载目标关卡
+    -- 清空所有旧关卡数据，只保留新关卡
+    gameState.idleLevelData = {}
     LoadLevelData(targetLevel)
 
     -- 重建钉子布局
@@ -1557,12 +1767,13 @@ function M.SwitchToLevel(targetLevel)
 
     print("[IdleMode] Switched to level " .. targetLevel)
     State.uiDirty = true
+    M.UploadIdleRank()  -- 阶段变化后刷新排行榜
     return true
 end
 
---- 获取当前关卡的球初始价值（接口：受全局升级影响）
+--- 获取当前关卡的球初始价值（接口：受全局升级 + 循环倍率影响）
 function M.GetBaseBallValue()
-    return Config.IDLE.BASE_DROP_VALUE + gameState.idleGlobalBallValueBonus
+    return (Config.IDLE.BASE_DROP_VALUE + gameState.idleGlobalBallValueBonus) * M.GetCycleMultiplier()
 end
 
 --- 获取当前关卡的底袋初始等级（接口：受全局升级影响）
@@ -1601,24 +1812,46 @@ end
 -- 转生系统
 -- ============================================================================
 
+--- 获取当前有效转生门槛（受虚空之力影响）
+---@return table BigNum
+function M.GetPrestigeThreshold()
+    local threshold = BigNum.new(Config.IDLE.PRESTIGE_THRESHOLD)
+    local voidLv = M.GetPrestigeAbilityLevel("void_force")
+    if voidLv > 0 then
+        local reduction = 1.0 - voidLv * 0.04
+        threshold = threshold * math_max(0.50, reduction)
+    end
+    return threshold
+end
+
 --- 检查是否可以转生
 function M.CanPrestige()
-    local threshold = BigNum.new(Config.IDLE.PRESTIGE_THRESHOLD)
-    return gameState.idleTotalEarned >= threshold
+    return gameState.idleTotalEarned >= M.GetPrestigeThreshold()
 end
 
 --- 执行转生
 function M.DoPrestige()
     if not M.CanPrestige() then return false end
+    -- 计算并发放星尘
+    local stardust = M.GetStardustReward()
+    gameState.idleStardust = gameState.idleStardust + stardust
     gameState.idlePrestigeCount = gameState.idlePrestigeCount + 1
     gameState.idlePrestigeMult = (1.0 + gameState.idlePrestigeCount * Config.IDLE.PRESTIGE_MULT_BONUS) * M.GetPrestigeBoost()
     State.ResetIdleEconomy()
+
+    -- 星光积蓄：转生后给予初始金币
+    local startCoins = M.GetPrestigeStartCoins()
+    if startCoins > 0 then
+        gameState.idleCoins = BigNum.new(startCoins)
+    end
 
     -- 重建口袋（ResetIdleEconomy 已清空 idleSlots）
     M.ResetSlots()
     M.InitPegs()
     balls  = {}
     popups = {}
+    print("[IdleMode] Prestige #" .. gameState.idlePrestigeCount .. " stardust+" .. stardust .. " total=" .. gameState.idleStardust)
+    M.UploadIdleRank()  -- 转生后刷新排行榜
     return true
 end
 
@@ -1650,8 +1883,243 @@ function M.ResetSlots()
     slots = gameState.idleSlots
 end
 
-function M.Enter()
-    print("[IdleMode] Entering idle mode")
+--- 存档加载完成后的实际初始化
+-- ============================================================================
+-- 放置模式排行榜（转生×10000 + 阶段 组合分数）
+-- ============================================================================
+
+--- 计算当前排行榜分数（转生次数优先，阶段次之）
+function M.GetIdleRankScore()
+    return (gameState.idlePrestigeCount or 0) * 10000 + (gameState.idleLevel or 1)
+end
+
+--- 上传排行榜分数（仅当分数变化时）
+function M.UploadIdleRank()
+    local score = M.GetIdleRankScore()
+    if score <= idleRankUploaded then return end
+    idleRankUploaded = score
+
+    clientCloud:SetInt(IDLE_RANK_KEY, score, {
+        ok = function()
+            print("[IdleRank] Upload OK: " .. score)
+            -- 上传成功后刷新自己的排名
+            M.FetchMyIdleRank()
+        end,
+        error = function(code, reason)
+            print("[IdleRank] Upload error: " .. tostring(reason))
+            idleRankUploaded = -1  -- 失败允许重试
+        end,
+    })
+end
+
+--- 查询自己的排名
+function M.FetchMyIdleRank()
+    clientCloud:GetUserRank(clientCloud.userId, IDLE_RANK_KEY, {
+        ok = function(rank, scoreValue)
+            idleMyRank = rank
+            print("[IdleRank] My rank: " .. tostring(rank))
+        end,
+        error = function(code, reason)
+            print("[IdleRank] GetUserRank error: " .. tostring(reason))
+        end,
+    })
+end
+
+--- 获取缓存的排名（供 UI 显示）
+function M.GetMyIdleRank()
+    return idleMyRank
+end
+
+-- ======= 放置模式排行榜面板 =======
+local idleLeaderboardShown = false
+
+function M.ShowIdleLeaderboard()
+    if idleLeaderboardShown then return end
+    local IdleUI = require("IdleUI")
+    local root = IdleUI.GetRoot()
+    if not root then return end
+    idleLeaderboardShown = true
+
+    -- 加载排行榜数据
+    local rankEntries = {}
+    local loading = true
+
+    local function BuildPanel()
+        -- 移除旧面板
+        local old = root:FindById("idleRankOverlay")
+        if old then old:Remove() end
+
+        local UI = require("urhox-libs/UI")
+        local rows = {}
+
+        if loading then
+            table.insert(rows, UI.Label {
+                text = "加载中...", fontSize = 14,
+                fontColor = { 160, 170, 200, 200 },
+                textAlign = "center", marginTop = 20,
+            })
+        elseif #rankEntries == 0 then
+            table.insert(rows, UI.Label {
+                text = "暂无排行数据", fontSize = 14,
+                fontColor = { 160, 170, 200, 200 },
+                textAlign = "center", marginTop = 20,
+            })
+        else
+            for _, e in ipairs(rankEntries) do
+                local rankColor
+                if e.rank == 1 then rankColor = { 255, 215, 0, 255 }
+                elseif e.rank == 2 then rankColor = { 200, 210, 225, 255 }
+                elseif e.rank == 3 then rankColor = { 205, 133, 63, 255 }
+                else rankColor = { 160, 170, 200, 220 } end
+
+                local nameColor = e.isMe and { 120, 220, 255, 255 } or { 210, 220, 240, 240 }
+                local name = (e.nickname or "玩家")
+                if e.isMe then name = name .. " (我)" end
+                if #name > 14 then name = string.sub(name, 1, 11) .. "..." end
+
+                local prestige = math_floor(e.score / 10000)
+                local stage = e.score % 10000
+                local scoreText = prestige > 0
+                    and string.format("转生%d 阶段%d", prestige, stage)
+                    or string.format("阶段%d", stage)
+
+                table.insert(rows, UI.Panel {
+                    width = "100%", flexDirection = "row",
+                    padding = { 4, 6, 4, 6 },
+                    backgroundColor = e.isMe and { 40, 60, 100, 120 } or { 0, 0, 0, 0 },
+                    borderRadius = 4, alignItems = "center",
+                    children = {
+                        UI.Label { text = tostring(e.rank), fontSize = 14,
+                            fontColor = rankColor, width = 24, textAlign = "center" },
+                        UI.Label { text = name, fontSize = 13,
+                            fontColor = nameColor, flexGrow = 1, flexShrink = 1 },
+                        UI.Label { text = scoreText, fontSize = 12,
+                            fontColor = { 255, 230, 140, 240 }, textAlign = "right" },
+                    },
+                })
+            end
+        end
+
+        -- 我的排名
+        local myInfo = {}
+        if idleMyRank then
+            table.insert(myInfo, UI.Label {
+                text = "我的排名: #" .. tostring(idleMyRank),
+                fontSize = 13, fontColor = { 120, 200, 255, 220 },
+                textAlign = "center", marginTop = 4,
+            })
+        end
+
+        local function closePanel()
+            local o = root:FindById("idleRankOverlay")
+            if o then o:Remove() end
+            idleLeaderboardShown = false
+        end
+
+        local overlay = UI.Panel {
+            id = "idleRankOverlay",
+            position = "absolute", top = 0, left = 0,
+            width = "100%", height = "100%",
+            justifyContent = "center", alignItems = "center",
+            backgroundColor = { 0, 0, 0, 140 },
+            pointerEvents = "auto",
+            onClick = function() closePanel() end,
+            children = {
+                UI.Panel {
+                    width = "85%", height = "55%",
+                    backgroundColor = { 20, 25, 50, 245 },
+                    borderColor = { 80, 110, 180, 200 },
+                    borderWidth = 2, borderRadius = 12,
+                    padding = { 10, 12, 8, 12 },
+                    pointerEvents = "auto",
+                    onClick = function() end,
+                    children = {
+                        -- 关闭按钮
+                        UI.Panel {
+                            position = "absolute", top = 6, right = 8,
+                            width = 26, height = 26, borderRadius = 13,
+                            backgroundColor = { 50, 55, 80, 200 },
+                            justifyContent = "center", alignItems = "center",
+                            pointerEvents = "auto",
+                            onClick = function() closePanel() end,
+                            children = {
+                                UI.Label { text = "×", fontSize = 19,
+                                    fontColor = { 180, 190, 220, 240 }, textAlign = "center" },
+                            },
+                        },
+                        -- 标题
+                        UI.Label {
+                            text = "🏆 放置排行榜", fontSize = 17,
+                            fontColor = { 255, 220, 120, 255 },
+                            textAlign = "center", marginBottom = 8,
+                        },
+                        -- 滚动列表
+                        UI.ScrollView {
+                            width = "100%", flexGrow = 1, flexShrink = 1,
+                            children = rows,
+                        },
+                        -- 底部我的排名
+                        table.unpack(myInfo),
+                    },
+                },
+            },
+        }
+        root:AddChild(overlay)
+    end
+
+    -- 先显示加载中
+    BuildPanel()
+
+    -- 请求排行数据
+    clientCloud:GetRankList(IDLE_RANK_KEY, 0, 20, {
+        ok = function(rankList)
+            loading = false
+            local userIds = {}
+            for i, item in ipairs(rankList) do
+                local score = (item.iscore and item.iscore[IDLE_RANK_KEY]) or 0
+                table.insert(rankEntries, {
+                    rank = i,
+                    userId = item.userId,
+                    nickname = nil,
+                    score = score,
+                    isMe = (item.userId == clientCloud.userId),
+                })
+                table.insert(userIds, item.userId)
+            end
+            if #userIds == 0 then
+                BuildPanel()
+                return
+            end
+            GetUserNickname({
+                userIds = userIds,
+                onSuccess = function(nicknames)
+                    local map = {}
+                    for _, info in ipairs(nicknames) do
+                        map[info.userId] = info.nickname or ""
+                    end
+                    for _, entry in ipairs(rankEntries) do
+                        entry.nickname = map[entry.userId] or "玩家"
+                    end
+                    BuildPanel()
+                end,
+                onError = function()
+                    for _, entry in ipairs(rankEntries) do
+                        entry.nickname = "玩家"
+                    end
+                    BuildPanel()
+                end,
+            })
+        end,
+        error = function(code, reason)
+            print("[IdleRank] GetRankList error: " .. tostring(reason))
+            loading = false
+            BuildPanel()
+        end,
+    })
+end
+
+function M._DoEnter()
+    print("[IdleMode] _DoEnter: initializing idle mode")
     M.ApplyUpgradeEffects()  -- 同步全局升级加成
     M.InitSlots()
     M.RecalcLayout()
@@ -1663,16 +2131,77 @@ function M.Enter()
     comboTimer = 0
     M._ballAutoDropTimer = 0
     M._skillTriggerLock = false   -- 防止每帧重复弹窗
-    skillCooldowns = {}           -- 重置技能冷却
+    -- 恢复技能冷却（存档中有则恢复，否则清空）
+    if gameState._savedSkillCooldowns then
+        M.ImportSkillCooldowns(gameState._savedSkillCooldowns)
+        gameState._savedSkillCooldowns = nil
+    else
+        skillCooldowns = {}
+    end
     skillBuffTimers = {}          -- 重置技能 buff
     gameState.gamePhase = "idle"
     -- 创建下半屏 UI
     local IdleUI = require("IdleUI")
     IdleUI.CreateUI()
+
+    -- 上报排行榜 + 查询排名
+    M.UploadIdleRank()
+end
+
+function M.Enter()
+    print("[IdleMode] Entering idle mode (loading saves...)")
+    local SaveSystem = require("SaveSystem")
+
+    -- 先标记 gamePhase 防止重复点击
+    gameState.gamePhase = "idle_loading"
+
+    -- 对比本地与云端存档，取更新的（带超时+重试）
+    local localData = SaveSystem.LoadLocal()
+
+    SaveSystem.LoadCloudKeys({ "shared", "idle" }, function(cloudResult, allFailed)
+        if allFailed then
+            -- 所有重试耗尽，返回菜单而非用空数据覆盖
+            print("[IdleMode] Cloud load FAILED after all retries, returning to menu")
+            gameState.gamePhase = "menu"
+            gameState.cloudLoadFailed = "idle"
+            return
+        end
+
+        local cloudShared = cloudResult.shared
+        local localCount  = (localData and localData.saveCount) or 0
+        local cloudCount  = (cloudShared and cloudShared.saveCount) or 0
+
+        if cloudShared and cloudCount >= localCount then
+            -- 云端更新，使用云端分 key 数据
+            SaveSystem.DeserializeShared(cloudShared)
+            SaveSystem.DeserializeIdle(cloudResult.idle)
+            SaveSystem.SaveLocal()  -- 同步到本地
+            print("[IdleMode] Using cloud save (saveCount=" .. cloudCount .. " >= local=" .. localCount .. ")")
+        elseif localData then
+            -- 本地更新，用本地大 blob 数据
+            SaveSystem.DeserializeShared(localData)
+            SaveSystem.DeserializeIdle(localData)
+            SaveSystem.Save()  -- 标脏，30s 后同步到云端
+            print("[IdleMode] Using local save (saveCount=" .. localCount .. " > cloud=" .. cloudCount .. ")")
+        else
+            print("[IdleMode] No save found, using defaults")
+        end
+
+        -- 迁移
+        if cloudResult._migrated then
+            SaveSystem.MigrateLegacyToSplitKeys()
+        end
+
+        SaveSystem.MarkCloudLoadSucceeded()
+        M._DoEnter()
+    end)
 end
 
 function M.Exit()
     print("[IdleMode] Exiting idle mode")
+    -- 退出前保存当前关卡数据（30s 节流写入云端）
+    local SaveSystem = require("SaveSystem")
+    SaveSystem.Save()
     -- 销毁下半屏 UI
     local IdleUI = require("IdleUI")
     IdleUI.DestroyUI()
@@ -1856,6 +2385,12 @@ function M.HandleClick(lx, ly)
         return
     end
 
+    -- 排行榜按钮
+    if HitRect(rankBtnRect, lx, ly) then
+        M.ShowIdleLeaderboard()
+        return
+    end
+
     -- 棋盘区域 = 投放弹珠（随机位置）
     if ly >= contentTop and ly <= contentBottom and lx >= contentLeft and lx <= contentRight then
         M.DropBall(nil)
@@ -1979,79 +2514,90 @@ function M.DrawIdleTopBar(vg, w)
 
     nvgFontFaceId(vg, fontNormal)
 
-    -- 返回按钮（左侧）
-    local btnW = S(48)
+    -- ======= 返回按钮（左侧，图片） =======
+    if not imgBackBtn then
+        imgBackBtn = nvgCreateImage(vg, "image/btn_back_20260520134345.png", 0)
+    end
     local btnH = S(28)
-    local btnX = S(8)
-    local btnY = S(6)
+    local btnW = S(32)
+    local btnX = S(6)
+    local btnY = S(5)
     backBtnRect = { x = btnX, y = btnY, w = btnW, h = btnH }
 
-    nvgBeginPath(vg)
-    nvgRoundedRect(vg, btnX, btnY, btnW, btnH, S(6))
-    nvgFillColor(vg, nvgRGBA(60, 65, 90, 200))
-    nvgFill(vg)
-    nvgBeginPath(vg)
-    nvgRoundedRect(vg, btnX, btnY, btnW, btnH, S(6))
-    nvgStrokeColor(vg, nvgRGBA(100, 120, 180, 150))
-    nvgStrokeWidth(vg, 1)
-    nvgStroke(vg)
+    if imgBackBtn then
+        nvgBeginPath(vg)
+        nvgRect(vg, btnX, btnY, btnW, btnH)
+        nvgFillPaint(vg, nvgImagePattern(vg, btnX, btnY, btnW, btnH, 0, imgBackBtn, 1.0))
+        nvgFill(vg)
+    end
 
-    nvgFontSize(vg, S(13))
-    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-    nvgFillColor(vg, nvgRGBA(200, 210, 240, 230))
-    nvgText(vg, btnX + btnW / 2, btnY + btnH / 2, "< 返回", nil)
+    -- ======= 中央关卡进度徽章（angular 按钮图片） =======
+    if not imgTopBarBtn then
+        imgTopBarBtn = nvgCreateImage(vg, "image/btn_bg_angular.png", 0)
+    end
 
-    -- 标题
-    nvgFontSize(vg, S(16))
-    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-    nvgFillColor(vg, nvgRGBA(255, 200, 80, 255))
-    nvgText(vg, w / 2, S(16), "放置模式", nil)
+    local cycle = M.GetCycleCount()
+    local cycleMult = M.GetCycleMultiplier()
+    local _, done, total = M.CheckAllGoalsDone()
 
-    -- 阶段信息（左侧中间）
+    local badgeW = S(90)
+    local badgeH = S(30)
+    local badgeX = (w - badgeW) / 2
+    local badgeY = S(4)
+
+    if imgTopBarBtn then
+        nvgBeginPath(vg)
+        nvgRect(vg, badgeX, badgeY, badgeW, badgeH)
+        nvgFillPaint(vg, nvgImagePattern(vg, badgeX, badgeY, badgeW, badgeH, 0, imgTopBarBtn, 1.0))
+        nvgFill(vg)
+    end
+
+    local centerX = w / 2
+    local line1Y = badgeY + badgeH * 0.38
+    local line2Y = badgeY + badgeH * 0.72
+
+    local cycleTag = cycle > 0 and string.format(" x%d", cycleMult) or ""
     nvgFontSize(vg, S(10))
-    nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    nvgFillColor(vg, nvgRGBA(255, 220, 120, 255))
+    nvgText(vg, centerX, line1Y, string.format("阶段 %d%s", gameState.idleLevel, cycleTag), nil)
 
-    -- 阶段编号 + 底袋等级范围
-    local minLv, maxLv, avgProg = M.GetSlotUpgradeProgress()
-    local lvText
-    if minLv == maxLv then
-        lvText = string.format("Lv.%d", minLv)
+    nvgFontSize(vg, S(8))
+    nvgFillColor(vg, nvgRGBA(140, 200, 255, 220))
+    nvgText(vg, centerX, line2Y, string.format("目标 %d/%d", done, total), nil)
+
+    -- ======= 排名显示（关卡徽章左侧，胶囊背景） =======
+    if not imgRankBg then
+        imgRankBg = nvgCreateImage(vg, "image/btn_bg_capsule.png", 0)
+    end
+    local rankBgW = S(58)
+    local rankBgH = badgeH          -- 与关卡徽章等高
+    local rankBgX = btnX + btnW + S(3)
+    local rankBgY = badgeY          -- 与关卡徽章同 Y
+    rankBtnRect = { x = rankBgX, y = rankBgY, w = rankBgW, h = rankBgH }
+
+    local rankCX = rankBgX + rankBgW / 2
+    local rankCY = rankBgY + rankBgH / 2
+
+    -- 绘制胶囊背景
+    if imgRankBg then
+        nvgBeginPath(vg)
+        nvgRect(vg, rankBgX, rankBgY, rankBgW, rankBgH)
+        nvgFillPaint(vg, nvgImagePattern(vg, rankBgX, rankBgY, rankBgW, rankBgH, 0, imgRankBg, 0.85))
+        nvgFill(vg)
+    end
+
+    -- 排名文字
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    if idleMyRank then
+        nvgFontSize(vg, S(10))
+        nvgFillColor(vg, nvgRGBA(255, 220, 100, 255))
+        nvgText(vg, rankCX, rankCY, "🏆#" .. tostring(idleMyRank), nil)
     else
-        lvText = string.format("Lv.%d~%d", minLv, maxLv)
+        nvgFontSize(vg, S(9))
+        nvgFillColor(vg, nvgRGBA(120, 130, 160, 180))
+        nvgText(vg, rankCX, rankCY, "排行--", nil)
     end
-    local stage = gameState.idleSkillPickCount + 1
-    nvgFillColor(vg, nvgRGBA(160, 220, 160, 200))
-    nvgText(vg, S(64), S(8), string.format("阶段%d  底袋%s  %.0f%%", stage, lvText, avgProg * 100), nil)
-
-    -- 技能进度
-    local currentLevel = gameState.idleLevel
-    local maxUnlocked = gameState.idleMaxUnlockedLevel
-    if currentLevel == maxUnlocked then
-        local _, done, total = M.CheckAllGoalsDone()
-        nvgFillColor(vg, nvgRGBA(100, 200, 255, 200))
-        nvgText(vg, S(64), S(18),
-            string.format("技能进度: %d/%d 项达标", done, total), nil)
-    else
-        nvgFillColor(vg, nvgRGBA(200, 200, 160, 160))
-        nvgText(vg, S(64), S(18),
-            string.format("已通关  (最高: 阶段%d)", maxUnlocked), nil)
-    end
-
-    -- 已获技能数
-    local skillCount = 0
-    for _ in pairs(gameState.idleSkills) do skillCount = skillCount + 1 end
-    if skillCount > 0 then
-        nvgFillColor(vg, nvgRGBA(200, 160, 255, 200))
-        local extraInfo = ""
-        if gameState.idlePrestigeCount > 0 then
-            extraInfo = string.format("  转生%d x%.1f", gameState.idlePrestigeCount, gameState.idlePrestigeMult)
-        end
-        nvgText(vg, S(64), S(28), string.format("技能%d种%s", skillCount, extraInfo), nil)
-    elseif gameState.idlePrestigeCount > 0 then
-        nvgFillColor(vg, nvgRGBA(200, 160, 255, 200))
-        nvgText(vg, S(64), S(28), string.format("转生%d x%.1f", gameState.idlePrestigeCount, gameState.idlePrestigeMult), nil)
-    end
-
 end
 
 return M

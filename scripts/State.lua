@@ -62,8 +62,8 @@ function M.GetInitialState()
         -- 品质抽取系统
         pityCounter = 0,             -- 保底计数器（连续未出精良+）
 
-        -- 附魔系统（本局有效，新游戏重置）
-        ballEnchantments = {},       -- { [ballIndex] = "enchantId" } 当前球的附魔
+        -- 附魔系统（全局，转生时重置）
+        idleEnchantments = {},       -- { [enchantId] = level } 全局附魔
 
         round = 1,
         roundTimeLeft = 60,
@@ -120,6 +120,8 @@ M.gameState.idleDrawCount = 0                 -- 放置模式抽取次数
 M.gameState.idleDrawPity = 0                  -- 放置模式保底计数
 M.gameState.idlePrestigeCount = 0             -- 转生次数
 M.gameState.idlePrestigeMult = 1.0            -- 转生永久加成倍率
+M.gameState.idleStardust = 0                  -- 星尘（转生货币）
+M.gameState.idlePrestigeAbilities = {}        -- { [abilityId] = level } 转生能力等级
 
 -- 关卡系统（per-level 持久化数据）
 M.gameState.idleLevel = 1                     -- 当前所在关卡
@@ -352,8 +354,10 @@ function M.ResetIdleEconomy()
     M.gameState.idleBallsDropped = 0
     -- 注意: idleGlobalBallValueBonus / idleGlobalSlotMultBonus / idleUpgradeLevels
     -- 是永久升级，转生不重置
-    -- 注意: idleSkills / idleSkillPickCount 是技能系统，转生不重置
+    M.gameState.idleSkills = {}               -- 技能重置
+    M.gameState.idleSkillPickCount = 0
     M.gameState.idleBallAbilityLevels = {}   -- 弹珠能力重置（新阶段重新升级）
+    M.gameState.idleEnchantments = {}        -- 附魔重置
     M.gameState.idleLevelData = {}
     M._idlePendingGold = 0
     M._idlePendingBallCoin = 0

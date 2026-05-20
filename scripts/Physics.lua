@@ -333,7 +333,7 @@ function M.DropMultipleBalls(randomPos)
         multiCount = multiCount + _rawFloor(extraBall)
     end
     -- 附魔：额外球概率（extra_ball, 加算，每级+5%）
-    local enchantExtra = Enchantment.GetValue(gameState.selectedBallType, "extra_ball")
+    local enchantExtra = Enchantment.GetValue("extra_ball")
     if enchantExtra > 0 and math.random() < enchantExtra then
         multiCount = multiCount + 1
     end
@@ -472,7 +472,7 @@ function M.UpdateBalls(dt)
 
                     -- 附魔：撞钉概率分裂（peg_split, 乘算，每级5%）
                     -- 分裂出的球不可再触发附魔分裂，防止无限连锁
-                    local enchantSplitChance = Enchantment.GetValue(ball.typeIndex, "peg_split")
+                    local enchantSplitChance = Enchantment.GetValue("peg_split")
                     if enchantSplitChance > 0 and #balls < maxBalls
                         and not ball.enchantSplit
                         and math.random() < enchantSplitChance then

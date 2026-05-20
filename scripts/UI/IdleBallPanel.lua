@@ -76,13 +76,6 @@ function P.CreateBallHeader()
                 marginLeft = 2,
             },
             UI.Panel { flexGrow = 1 },
-            -- 右侧提示
-            UI.Label {
-                text = "转生清零",
-                fontSize = 8,
-                fontColor = { 140, 150, 180, 140 },
-                marginRight = 8,
-            },
         },
     }
 end
@@ -165,11 +158,12 @@ function P.CreateCurrentBallInfo(cb)
                 alignItems = "center",
                 gap = 10,
                 children = {
-                    -- 弹珠颜色圆
+                    -- 弹珠图标（皮肤图片）
                     UI.Panel {
                         width = 28, height = 28,
                         borderRadius = 14,
-                        backgroundColor = bt.color,
+                        backgroundImage = Config.GetBallSkinImage(bt.skinKey or "iron"),
+                        backgroundFit = "contain",
                     },
                     -- 名称 + 特性描述
                     UI.Panel {
@@ -202,7 +196,7 @@ end
 ---@param cb table 回调表
 ---@param ballIndex number 球索引
 function P._CreateEnchantRow(cb, ballIndex)
-    local enchants = Enchantment.GetAll(ballIndex)
+    local enchants = Enchantment.GetAll()
     local pool = Config.ENCHANTMENTS
 
     -- 确保 selectedEnchantIdx 合法
@@ -212,6 +206,7 @@ function P._CreateEnchantRow(cb, ballIndex)
 
     -- 图标行
     local iconChildren = {}
+    local iconSize = 28  -- 1:1 正方形图标
     for i, cfg in ipairs(pool) do
         local lv = enchants[cfg.id] or 0
         local isSelected = (i == selectedEnchantIdx)
@@ -238,14 +233,13 @@ function P._CreateEnchantRow(cb, ballIndex)
 
         local idx = i  -- 闭包捕获
         table.insert(iconChildren, UI.Panel {
-            flexDirection = "column",
+            width = iconSize, height = iconSize,
+            justifyContent = "center",
             alignItems = "center",
-            padding = { 5, 4, 5, 4 },
-            borderRadius = 8,
+            borderRadius = 6,
             backgroundColor = bgColor,
             borderColor = bdColor,
             borderWidth = bdWidth,
-            gap = 1,
             pointerEvents = "auto",
             onClick = function(self)
                 cb.PlayClickSfx()
@@ -255,45 +249,40 @@ function P._CreateEnchantRow(cb, ballIndex)
             end,
             children = {
                 UI.Panel {
-                    width = 22, height = 22,
+                    width = iconSize - 6, height = iconSize - 6,
                     backgroundImage = cfg.iconImage,
                     backgroundFit = "contain",
-                },
-                UI.Label {
-                    text = owned and ("Lv." .. lv) or "-",
-                    fontSize = 10,
-                    fontColor = owned
-                        and { cfg.color[1], cfg.color[2], cfg.color[3], 255 }
-                        or { 80, 90, 110, 150 },
+                    opacity = owned and 1.0 or 0.4,
                 },
             },
         })
     end
 
-    -- 广告附魔按钮
+    -- 弹性空间 → 广告附魔按钮居右
     if cb.ADS_ENABLED then
+        table.insert(iconChildren, UI.Panel { flexGrow = 1 })
         table.insert(iconChildren, UI.Panel {
-            flexDirection = "column",
+            flexDirection = "row",
             alignItems = "center",
             justifyContent = "center",
-            padding = { 5, 6, 5, 6 },
+            padding = { 4, 5, 4, 5 },
             borderRadius = 8,
             backgroundColor = { 220, 140, 30, 240 },
-            gap = 1,
+            gap = 4,
             pointerEvents = "auto",
             onClick = function(self)
                 cb.PlayClickSfx()
                 Enchantment.AdEnchant()
             end,
             children = {
-                UI.Label {
-                    text = "▶",
-                    fontSize = 16,
-                    fontColor = { 255, 255, 255, 240 },
+                UI.Panel {
+                    width = 18, height = 18,
+                    backgroundImage = "image/icon_ad.png",
+                    backgroundFit = "contain",
                 },
                 UI.Label {
                     text = "附魔",
-                    fontSize = 10,
+                    fontSize = 11,
                     fontColor = { 255, 255, 255, 240 },
                 },
             },
@@ -412,9 +401,10 @@ function P.CreateAbilityItem(cb, index, ballUpgrades)
     if not abCfg then return UI.Panel {} end
 
     local IdleMode = require("IdleMode")
-    local level = IdleMode.GetBallAbilityLevel(abCfg.id)
+    local level = IdleMode.GetBallAbilityLevel(abCfg.id)       -- 含精通加成，用于显示
+    local rawLevel = IdleMode.GetBallAbilityLevel(abCfg.id, true)  -- 原始等级，用于费用计算和防连点
     local isUnlocked = IdleMode.IsBallAbilityUnlocked(index)
-    local isMaxed = level >= abCfg.maxLevel
+    local isMaxed = rawLevel >= abCfg.maxLevel  -- 用 rawLevel 判断满级（与购买逻辑一致）
 
     -- 当前球皮肤图片（用于费用图标）
     local typeIdx = IdleMode.GetCurrentBallType()
@@ -483,7 +473,7 @@ function P.CreateAbilityItem(cb, index, ballUpgrades)
     end
 
     -- ====== 已解锁状态 ======
-    local cost = isMaxed and 0 or Config.GetUpgradeCost(abCfg, level)
+    local cost = isMaxed and 0 or Config.GetUpgradeCost(abCfg, rawLevel)  -- 用 rawLevel 计算费用（与购买逻辑一致）
     local canAfford = not isMaxed and gameState.idleBallCoins >= cost
 
     -- 当前值
@@ -526,10 +516,11 @@ function P.CreateAbilityItem(cb, index, ballUpgrades)
         alignItems = "center", gap = 8,
         pointerEvents = "auto",
         onClick = function()
-            if not isMaxed then
-                cb.PlayClickSfx()
-                cb.PurchaseBallAbility(abCfg.id)
-            end
+            -- 防连点：如果等级已被其他点击升过，跳过
+            if IdleMode.GetBallAbilityLevel(abCfg.id, true) ~= rawLevel then return end
+            if isMaxed then return end
+            cb.PlayClickSfx()
+            cb.PurchaseBallAbility(abCfg.id)
         end,
         children = {
             -- 左侧：名称 + 描述(含属性值) — flex 结构与升级面板一致
@@ -652,9 +643,9 @@ function P.UpdateAfford(root)
     for _, abCfg in ipairs(ballUpgrades) do
         local ref = abilityRefs[abCfg.id]
         if ref then  -- 非满级项才有 ref
-            local lv = IdleMode.GetBallAbilityLevel(abCfg.id)
-            local cost = Config.GetUpgradeCost(abCfg, lv)
-            local canAfford = (lv < abCfg.maxLevel) and (gameState.idleBallCoins >= cost)
+            local rawLv = IdleMode.GetBallAbilityLevel(abCfg.id, true)  -- 用原始等级（与购买逻辑一致）
+            local cost = Config.GetUpgradeCost(abCfg, rawLv)
+            local canAfford = (rawLv < abCfg.maxLevel) and (gameState.idleBallCoins >= cost)
 
             if canAfford ~= ref.canAfford then
                 ref.canAfford = canAfford

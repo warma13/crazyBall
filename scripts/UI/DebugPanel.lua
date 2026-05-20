@@ -128,6 +128,35 @@ function M.Show()
                         IdleUI.RefreshCurrentTab()
                         print("[Debug] +10K gold coins")
                     end),
+                    DebugButton("+10 星尘", function()
+                        gameState.idleStardust = (gameState.idleStardust or 0) + 10
+                        State.uiDirty = true
+                        M.Hide()
+                        local IdleUI = require("IdleUI")
+                        IdleUI.RefreshCurrentTab()
+                        print("[Debug] +10 stardust, total: " .. gameState.idleStardust)
+                    end),
+                    DebugButton("强制转生", function()
+                        -- 绕过门槛检查，直接执行转生逻辑
+                        local stardust = IdleMode.GetStardustReward()
+                        gameState.idleStardust = (gameState.idleStardust or 0) + stardust
+                        gameState.idlePrestigeCount = gameState.idlePrestigeCount + 1
+                        local Config = require("Config")
+                        gameState.idlePrestigeMult = (1.0 + gameState.idlePrestigeCount * Config.IDLE.PRESTIGE_MULT_BONUS) * IdleMode.GetPrestigeBoost()
+                        State.ResetIdleEconomy()
+                        local startCoins = IdleMode.GetPrestigeStartCoins()
+                        if startCoins > 0 then
+                            gameState.idleCoins = BigNum.new(startCoins)
+                        end
+                        IdleMode.ResetSlots()
+                        IdleMode.InitPegs()
+                        print("[Debug] Forced prestige #" .. gameState.idlePrestigeCount .. " stardust+" .. stardust .. " total=" .. gameState.idleStardust)
+                        local SaveSystem = require("SaveSystem")
+                        SaveSystem.Save()
+                        M.Hide()
+                        IdleMode.Exit()
+                        IdleMode.Enter()
+                    end),
                     DebugButton("清除放置存档", function()
                         -- 重置所有放置模式持久化字段
                         gameState.idleCoins = BigNum.new(0)

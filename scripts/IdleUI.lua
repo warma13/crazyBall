@@ -69,8 +69,9 @@ local cb = {
     -- IdleMode 方法（延迟绑定，避免循环依赖）
     PurchaseBallAbility = function(abilityId)
         local IdleMode = require("IdleMode")
-        IdleMode.PurchaseBallAbility(abilityId)
-        -- 不调 RefreshCurrentTab：等级变化由 ComputeStructKey 下一帧自动检测并重建
+        if IdleMode.PurchaseBallAbility(abilityId) then
+            M.RefreshCurrentTab()  -- 立即重建 UI，防止连点用旧按钮重复升级
+        end
     end,
     -- 口袋升级已改为自动（掉球N个+1倍率），无需手动回调
     DoPrestige = function()
@@ -86,8 +87,15 @@ local cb = {
     end,
     PurchaseUpgrade = function(upgradeId)
         local IdleMode = require("IdleMode")
-        IdleMode.PurchaseUpgrade(upgradeId)
-        -- 不调 RefreshCurrentTab：等级变化由 ComputeStructKey 下一帧自动检测并重建
+        if IdleMode.PurchaseUpgrade(upgradeId) then
+            M.RefreshCurrentTab()
+        end
+    end,
+    PurchasePrestigeAbility = function(abilityId)
+        local IdleMode = require("IdleMode")
+        if IdleMode.PurchasePrestigeAbility(abilityId) then
+            M.RefreshCurrentTab()
+        end
     end,
 }
 
@@ -601,7 +609,12 @@ function M.ComputeStructKey()
         return "K" .. gameState.idleLevel .. "_" .. gameState.idleSkillPickCount .. "_" .. table.concat(bits, "_")
     elseif activeTab == "prestige" then
         local can = IdleMode.CanPrestige() and "1" or "0"
-        return "P" .. can .. "_" .. gameState.idlePrestigeCount
+        local abBits = {}
+        for _, cfg in ipairs(Config.IDLE.PRESTIGE_ABILITIES) do
+            local lv = IdleMode.GetPrestigeAbilityLevel(cfg.id)
+            abBits[#abBits + 1] = tostring(lv)
+        end
+        return "P" .. can .. "_" .. gameState.idlePrestigeCount .. "_" .. gameState.idleStardust .. "_" .. table.concat(abBits, "_")
     elseif activeTab == "upgrade" then
         local bits = {}
         for i, upgCfg in ipairs(Config.IDLE.UPGRADES) do

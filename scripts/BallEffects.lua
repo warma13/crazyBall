@@ -132,7 +132,7 @@ function M.GetBallValue(typeIndex, level)
     -- 符文增值加成（rune_value: 全部球基础价值+8%/级）
     -- 附魔增值加成（ball_value: 加算，每级+100%）
     local addBaseVal = sumEffects("multi_value") + Runes.GetRuneValue("rune_value")
-        + Enchantment.GetValue(typeIndex, "ball_value")
+        + Enchantment.GetValue("ball_value")
     local result = math.floor(calcFormula(base, {
         addBase = addBaseVal,
         flatExtra = sumEffects("ball_polish"),

@@ -29,23 +29,31 @@ local function PlayClickSfx()
     end
 end
 
+--- 获取当前活跃的 UI 根节点（兼容主界面和放置模式）
+local function GetActiveRoot()
+    return UI.GetRoot()
+end
+
 --- 显示免广券选择弹窗
 ---@param onResult fun(result: table)  与 sdk:ShowRewardVideoAd 回调格式一致
 local function ShowTicketPopup(onResult)
-    if not State.uiRoot_ then return end
+    local root = GetActiveRoot()
+    if not root then return end
 
     -- 移除旧弹窗
-    local old = State.uiRoot_:FindById("adTicketOverlay")
-    if old then State.uiRoot_:RemoveChild(old) end
+    local old = root:FindById("adTicketOverlay")
+    if old then root:RemoveChild(old) end
 
     local tickets = gameState.adFreeTickets or 0
 
     local function dismiss()
-        local el = State.uiRoot_:FindById("adTicketOverlay")
-        if el then State.uiRoot_:RemoveChild(el) end
+        local r = GetActiveRoot()
+        if not r then return end
+        local el = r:FindById("adTicketOverlay")
+        if el then r:RemoveChild(el) end
     end
 
-    State.uiRoot_:AddChild(UI.Panel {
+    root:AddChild(UI.Panel {
         id = "adTicketOverlay",
         position = "absolute",
         top = 0, left = 0,

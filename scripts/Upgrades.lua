@@ -49,7 +49,7 @@ function M.GetBallUpgradeCost(index)
     local base = math.max(bt.cost, 8)
     local cost = math.floor(BigNum.new(base) * BigNum.new(1.4) ^ (level - 1))
     -- 附魔折扣（upgrade_discount: 乘算，每级-5%）
-    local discount = Enchantment.GetValue(index, "upgrade_discount")
+    local discount = Enchantment.GetValue("upgrade_discount")
     if discount > 0 then
         cost = math.floor(cost * (1 - discount))
         if cost < 1 then cost = BigNum.new(1) end

@@ -249,6 +249,35 @@ function Start()
         scale = UI.Scale.DEFAULT,
     })
 
+    -- 触屏设备屏蔽 SDL 模拟的 Mouse 事件，防止 Touch+Mouse 双重触发
+    do
+        local platform = GetPlatform()
+        if platform == "Android" or platform == "iOS" or platform == "Web" then
+            local isTouchDevice = false
+            local origTouchBegin = UI.HandleTouchBegin
+            local origMouseDown  = UI.HandleMouseDown
+            local origMouseUp    = UI.HandleMouseUp
+            local origMouseMove  = UI.HandleMouseMove
+
+            UI.HandleTouchBegin = function(touchId, x, y, pressure)
+                isTouchDevice = true
+                origTouchBegin(touchId, x, y, pressure)
+            end
+            UI.HandleMouseDown = function(x, y, button)
+                if isTouchDevice then return end
+                origMouseDown(x, y, button)
+            end
+            UI.HandleMouseUp = function(x, y, button)
+                if isTouchDevice then return end
+                origMouseUp(x, y, button)
+            end
+            UI.HandleMouseMove = function(x, y)
+                if isTouchDevice then return end
+                origMouseMove(x, y)
+            end
+        end
+    end
+
     -- 音效
     State.sfxScene_ = Scene()
     State.sfxPegHit = cache:GetResource("Sound", "audio/sfx/peg_hit.ogg")
@@ -291,28 +320,12 @@ function Start()
     SubscribeToEvent("Update", "HandleUpdate")
     SubscribeToEvent(State.vg, "NanoVGRender", "HandleNanoVGRender")
 
-    -- 检测是否有存档（用于菜单按钮状态）
-    gameState.hasSave = fileSystem:FileExists("save.json")
+    -- WASM 环境下本地存档不持久化，菜单不做云加载
+    -- 直接假设有存档（"继续游戏"按钮始终可用），进入游戏时再加载
+    -- 如果云端实际无存档，StartGame 会按新游戏处理
+    gameState.hasSave = true
     gameState.showNewGameConfirm = false
-
-    -- 从云端加载持久化字段（WASM 本地不持久化，必须从云端恢复）
-    SaveSystem.LoadFromCloud(function(cloudData)
-        if cloudData and gameState.gamePhase == "menu" then
-            gameState.hasSave = true
-            -- 恢复持久化字段到菜单态，不做完整 Deserialize（那由 StartGame 处理）
-            gameState.bestScore = cloudData.bestScore and BigNum.deserialize(cloudData.bestScore) or gameState.bestScore
-            gameState.bestRound = cloudData.bestRound or gameState.bestRound
-            gameState.runeEssence = cloudData.runeEssence or 0
-            if cloudData.runeLevels then
-                gameState.runeLevels = SaveSystem._CopyTable(cloudData.runeLevels)
-            end
-            print(string.format("[Menu] Cloud persistent restored: essence=%d bestRound=%d",
-                gameState.runeEssence, gameState.bestRound))
-        elseif not gameState.hasSave then
-            print("[Menu] No save found (local or cloud)")
-        end
-    end)
-    print("[Menu] localSave=" .. tostring(gameState.hasSave))
+    print("[Menu] WASM mode: skip menu cloud load, hasSave=true (deferred)")
 
     -- 不立即开始游戏，等待菜单点击
     -- UI 和第一轮在点击开始后创建
@@ -325,6 +338,9 @@ function Start()
         State.lowQuality = (q == "low")
     end
     print("[Quality] mode=" .. q .. " lowQuality=" .. tostring(State.lowQuality))
+
+    -- 预热云连接：WASM 冷启动建连需 15s+，提前发起后续进 idle 可命中缓存
+    SaveSystem.PrefetchCloud()
 
     print("=== " .. CONFIG.Title .. " Started ===")
     print("Initial slots: " .. #gameState.slots)
@@ -369,11 +385,22 @@ local function BeginPlay()
             gameState.balls = {}
         end
 
-        -- 恢复钉子命中状态
+        -- 恢复钉子命中状态（兼容稀疏格式和旧数组格式）
         if gameState._savedPegTimers then
             local timers = gameState._savedPegTimers
-            for i = 1, math.min(#gameState.pegs, #timers) do
-                gameState.pegs[i].hitTimer = timers[i]
+            if #timers > 0 then
+                -- 旧格式：数组 [0, 0, 0.3, 0, ...]
+                for i = 1, math.min(#gameState.pegs, #timers) do
+                    gameState.pegs[i].hitTimer = timers[i]
+                end
+            else
+                -- 新稀疏格式：{ ["3"] = 0.3, ["7"] = 0.15, ... }
+                for k, v in pairs(timers) do
+                    local idx = tonumber(k)
+                    if idx and gameState.pegs[idx] then
+                        gameState.pegs[idx].hitTimer = v
+                    end
+                end
             end
             gameState._savedPegTimers = nil
         end
@@ -390,30 +417,54 @@ local function BeginPlay()
 end
 
 --- 从菜单进入游戏（比对本地与云端 saveCount，取更新的）
+--- WASM 安全版：带超时和重试，失败后不用空数据开始
 local function StartGame()
     if gameState.loading then return end
     gameState.loading = true
+    gameState.loadingSource = "main"  -- 标记加载来源，供渲染器显示
+    gameState.cloudLoadFailed = nil  -- 清除上次的失败提示
     Physics.PlaySfx(State.sfxButtonClick, 0.8)
 
     local localData = SaveSystem.LoadLocal()
 
-    SaveSystem.LoadFromCloud(function(cloudData)
-        local localCount = (localData and localData.saveCount) or 0
-        local cloudCount = (cloudData and cloudData.saveCount) or 0
+    SaveSystem.LoadCloudKeys({ "shared", "main" }, function(cloudResult, allFailed)
+        if allFailed then
+            -- 所有重试耗尽：不用空数据开始，回到菜单让玩家手动重试
+            gameState.loading = false
+            gameState.cloudLoadFailed = "main"  -- 标记失败，用于菜单显示提示
+            print("[Menu] Cloud load failed after all retries, returning to menu")
+            return
+        end
 
-        if cloudData and cloudCount >= localCount then
-            -- 云端更新（或相同），用云端
-            SaveSystem.Deserialize(cloudData)
+        -- 标记云端加载成功（允许后续云端写入）
+        SaveSystem.MarkCloudLoadSucceeded()
+
+        local cloudShared = cloudResult.shared
+        local cloudMain   = cloudResult.main
+        local localCount  = (localData and localData.saveCount) or 0
+        local cloudCount  = (cloudShared and cloudShared.saveCount) or 0
+
+        if cloudShared and cloudCount >= localCount then
+            -- 云端更新，使用云端分 key 数据
+            SaveSystem.DeserializeShared(cloudShared)
+            SaveSystem.DeserializeMainGame(cloudMain)
             SaveSystem.SaveLocal()  -- 同步到本地
-            print("[Menu] Loaded from cloud (saveCount=" .. cloudCount .. " >= local=" .. localCount .. ")")
+            print("[Menu] Using cloud save (saveCount=" .. cloudCount .. " >= local=" .. localCount .. ")")
         elseif localData then
-            -- 本地更新，用本地
-            SaveSystem.Deserialize(localData)
-            SaveSystem.SaveCloud()  -- 同步到云端
-            print("[Menu] Loaded from local (saveCount=" .. localCount .. " > cloud=" .. cloudCount .. ")")
+            -- 本地更新，用本地大 blob 数据
+            SaveSystem.DeserializeShared(localData)
+            SaveSystem.DeserializeMainGame(localData)
+            SaveSystem.Save()  -- 标脏，30s 后同步到云端
+            print("[Menu] Using local save (saveCount=" .. localCount .. " > cloud=" .. cloudCount .. ")")
         else
             print("[Menu] No save, using defaults")
         end
+
+        -- 迁移：如果是从旧版 save_data 迁移过来的，写入新分 key
+        if cloudResult._migrated then
+            SaveSystem.MigrateLegacyToSplitKeys()
+        end
+
         BeginPlay()
     end)
 end
@@ -509,31 +560,31 @@ local menuTouchActive = false
 local function NewGame()
     if gameState.loading then return end
     gameState.loading = true
+    gameState.loadingSource = "new"
+    gameState.cloudLoadFailed = nil
     Physics.PlaySfx(State.sfxButtonClick, 0.8)
     State.ResetToInitial()
+    -- 新游戏是玩家主动选择，允许云端写入
+    SaveSystem.MarkCloudLoadSucceeded()
     gameState.loading = false
     -- 重建坑位布局
     Physics.RecalcLayout()
     Physics.InitPegs()
     BeginPlay()
     -- 保存一次（覆盖旧存档）
-    SaveSystem.SaveLocal()
-    SaveSystem.SaveCloud()
+    SaveSystem.Save()
     print("[Menu] New game started!")
 end
 
 --- 菜单点击检测实现（模块级，避免每帧分配闭包）
 HandleMenuClick = function(lx, ly)
-    -- 公告弹窗优先处理
+    -- 公告弹窗打开时：点关闭按钮或弹窗外部 → 关闭
     if gameState.showAnnouncePanel then
-        if HitRect(Renderer.announceCloseRect, lx, ly) then
-            Physics.PlaySfx(State.sfxButtonClick, 0.8)
-            gameState.showAnnouncePanel = false
-        elseif not HitRect(Renderer.announceDlgRect, lx, ly) then
-            -- 点击卡片外部关闭
+        if not HitRect(Renderer.announceDlgRect, lx, ly)
+            or HitRect(Renderer.announceCloseRect, lx, ly) then
             gameState.showAnnouncePanel = false
         end
-        return  -- 弹窗打开时不响应底层按钮
+        return
     end
 
     -- 新游戏确认弹窗优先处理
@@ -570,8 +621,31 @@ HandleMenuClick = function(lx, ly)
 
     -- 符文系统
     if HitRect(Renderer.menuRuneRect, lx, ly) then
+        if gameState.loading then return end
+        gameState.loading = true
+        gameState.loadingSource = "runes"
+        gameState.cloudLoadFailed = nil
         Physics.PlaySfx(State.sfxButtonClick, 0.8)
-        gameState.gamePhase = "runes"
+
+        SaveSystem.LoadCloudKeys({ "shared", "runes" }, function(cloudResult, allFailed)
+            gameState.loading = false
+            if allFailed then
+                gameState.cloudLoadFailed = "runes"
+                print("[Menu] Cloud load failed for runes, returning to menu")
+                return
+            end
+            SaveSystem.MarkCloudLoadSucceeded()
+            -- 只加载共享+符文数据
+            SaveSystem.DeserializeShared(cloudResult.shared)
+            SaveSystem.DeserializeRunes(cloudResult.runes)
+
+            -- 迁移
+            if cloudResult._migrated then
+                SaveSystem.MigrateLegacyToSplitKeys()
+            end
+
+            gameState.gamePhase = "runes"
+        end)
         return
     end
 
@@ -582,13 +656,10 @@ HandleMenuClick = function(lx, ly)
         return
     end
 
-    -- 公告按钮（toggle）
+    -- 公告按钮
     if HitRect(Renderer.menuAnnounceBtnRect, lx, ly) then
-        Physics.PlaySfx(State.sfxButtonClick, 0.8)
-        gameState.showAnnouncePanel = not gameState.showAnnouncePanel
-        if gameState.showAnnouncePanel then
-            CheckVersionUpdate()
-        end
+        gameState.showAnnouncePanel = true
+        CheckVersionUpdate()
         return
     end
 end
@@ -622,6 +693,9 @@ end
 function HandleUpdate(eventType, eventData)
     local dt = eventData["TimeStep"]:GetFloat()
 
+    -- ==== 云加载超时检测（所有阶段都需要驱动） ====
+    SaveSystem.UpdateCloudLoadTimeout(dt)
+
     -- ==== 漂浮提示更新 ====
     if gameState.failedToast and gameState.failedToast.timer > 0 then
         gameState.failedToast.timer = gameState.failedToast.timer - dt
@@ -633,28 +707,23 @@ function HandleUpdate(eventType, eventData)
 
     -- ==== 菜单阶段 ====
     if gameState.gamePhase == "menu" then
-        -- 鼠标点击检测
-        if input:GetMouseButtonPress(MOUSEB_LEFT) then
-            local dpr = graphics:GetDPR()
-            local mx = input.mousePosition.x / dpr
-            local my = input.mousePosition.y / dpr
-            HandleMenuClick(mx, my)
-        end
-        -- 触摸检测（只响应新触摸，防止按住重复触发）
+        local dpr = graphics:GetDPR()
         local numTouches = input:GetNumTouches()
-        if numTouches > 0 and not menuTouchActive then
-            menuTouchActive = true
+        if numTouches > 0 then
+            -- 触摸：只响应新按下，防止按住重复触发
             local touch = input:GetTouch(0)
-            if touch and touch.pressure > 0 then
-                local dpr = graphics:GetDPR()
-                local tx = touch.position.x / dpr
-                local ty = touch.position.y / dpr
-                HandleMenuClick(tx, ty)
+            if touch and touch.pressure > 0 and not menuTouchActive then
+                menuTouchActive = true
+                HandleMenuClick(touch.position.x / dpr, touch.position.y / dpr)
             end
-        elseif numTouches == 0 then
+        else
             menuTouchActive = false
+            -- 无触摸时才处理鼠标（PC 端），避免 SDL 模拟鼠标事件重复触发
+            if input:GetMouseButtonPress(MOUSEB_LEFT) then
+                HandleMenuClick(input.mousePosition.x / dpr, input.mousePosition.y / dpr)
+            end
         end
-        return  -- 菜单阶段不更新游戏逻辑
+        return
     end
 
     -- ==== 符文阶段 ====
@@ -691,11 +760,18 @@ function HandleUpdate(eventType, eventData)
         return
     end
 
+    -- ==== 放置模式加载中 ====
+    if gameState.gamePhase == "idle_loading" then
+        return  -- 等待云端回调完成
+    end
+
     -- ==== 放置模式阶段 ====
     if gameState.gamePhase == "idle" then
         IdleMode.Update(dt)
         IdleUI.Update(dt)
-        -- 节流存档（每 5 秒）
+        -- 云端节流写入 + 排行榜对比（与主游戏共用同一套逻辑）
+        SaveSystem.Update(dt)
+        -- 本地节流存档（每 5 秒）
         if not M_idleSaveTimer then M_idleSaveTimer = 0 end
         M_idleSaveTimer = M_idleSaveTimer + dt
         if M_idleSaveTimer >= 5 then

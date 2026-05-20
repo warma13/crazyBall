@@ -58,158 +58,7 @@ local COLORS = {
 
 local ITEM_HEIGHT = 58
 
--- ============================================================================
--- 关卡选择弹窗
--- ============================================================================
-
-local LEVEL_SELECT_ID = "levelSelectOverlay"
-
---- 关闭关卡选择弹窗
-local function HideLevelSelect()
-    local IdleUI = require("IdleUI")
-    local root = IdleUI.GetRoot()
-    if not root then return end
-    local old = root:FindById(LEVEL_SELECT_ID)
-    if old then root:RemoveChild(old) end
-end
-
---- 打开关卡选择弹窗
-local function ShowLevelSelect()
-    local IdleUI = require("IdleUI")
-    local root = IdleUI.GetRoot()
-    if not root then return end
-    HideLevelSelect()
-
-    local IdleMode = require("IdleMode")
-    local currentLevel = gameState.idleLevel
-    local maxUnlocked  = gameState.idleMaxUnlockedLevel or 1
-
-    -- 构建关卡网格项（显示全部关卡，未解锁灰色）
-    local totalLevels = #Config.BALL_TYPES
-    local cells = {}
-    for lv = 1, totalLevels do
-        local isCurrent = (lv == currentLevel)
-        local isUnlocked = (lv <= maxUnlocked)
-
-        local bgColor, bdColor, bdWidth, txtColor
-        if isCurrent then
-            bgColor  = { 80, 140, 255, 220 }
-            bdColor  = { 140, 200, 255, 255 }
-            bdWidth  = 2
-            txtColor = { 255, 255, 255, 255 }
-        elseif isUnlocked then
-            bgColor  = { 45, 50, 70, 220 }
-            bdColor  = { 70, 80, 110, 120 }
-            bdWidth  = 1
-            txtColor = { 180, 190, 210, 230 }
-        else
-            bgColor  = { 30, 32, 42, 180 }
-            bdColor  = { 50, 55, 70, 80 }
-            bdWidth  = 1
-            txtColor = { 70, 75, 90, 150 }
-        end
-
-        table.insert(cells, UI.Panel {
-            width = 48, height = 48,
-            borderRadius = 10,
-            backgroundColor = bgColor,
-            borderColor = bdColor,
-            borderWidth = bdWidth,
-            justifyContent = "center",
-            alignItems = "center",
-            pointerEvents = isUnlocked and "auto" or "none",
-            onClick = isUnlocked and function()
-                if lv ~= currentLevel then
-                    IdleMode.SwitchToLevel(lv)
-                    State.uiDirty = true
-                    local IdleUI2 = require("IdleUI")
-                    IdleUI2.RefreshCurrentTab()
-                end
-                HideLevelSelect()
-            end or nil,
-            children = {
-                UI.Label {
-                    text = isUnlocked and tostring(lv) or "🔒",
-                    fontSize = isUnlocked and 16 or 14,
-                    fontColor = txtColor,
-                    textAlign = "center",
-                },
-            },
-        })
-    end
-
-    local overlay = UI.Panel {
-        id = LEVEL_SELECT_ID,
-        position = "absolute",
-        top = 0, left = 0,
-        width = "100%", height = "100%",
-        backgroundColor = { 0, 0, 0, 160 },
-        justifyContent = "center",
-        alignItems = "center",
-        pointerEvents = "auto",
-        onClick = function() HideLevelSelect() end,
-        children = {
-            UI.Panel {
-                width = "85%",
-                maxWidth = 320,
-                backgroundImage = IMG.POPUP,
-                backgroundFit = "sliced",
-                backgroundSlice = POPUP_SLICE,
-                padding = { 16, 16, 16, 16 },
-                gap = 12,
-                alignItems = "center",
-                pointerEvents = "auto",
-                onClick = function() end, -- 阻止点击穿透
-                children = {
-                    -- 标题
-                    UI.Label {
-                        text = "选择关卡",
-                        fontSize = 18,
-                        fontColor = { 120, 200, 255, 255 },
-                        textAlign = "center",
-                    },
-                    -- 关卡网格
-                    UI.Panel {
-                        width = "100%",
-                        flexDirection = "row",
-                        flexWrap = "wrap",
-                        justifyContent = "center",
-                        gap = 8,
-                        children = cells,
-                    },
-                    -- 关闭按钮
-                    UI.Panel {
-                        width = "100%",
-                        alignItems = "center",
-                        marginTop = 4,
-                        children = {
-                            UI.Panel {
-                                paddingLeft = 20, paddingRight = 20,
-                                paddingTop = 6, paddingBottom = 6,
-                                borderRadius = 8,
-                                backgroundColor = { 60, 65, 85, 200 },
-                                borderColor = { 100, 110, 140, 120 },
-                                borderWidth = 1,
-                                pointerEvents = "auto",
-                                onClick = function() HideLevelSelect() end,
-                                children = {
-                                    UI.Label {
-                                        text = "关闭",
-                                        fontSize = 13,
-                                        fontColor = { 180, 190, 220, 220 },
-                                        textAlign = "center",
-                                    },
-                                },
-                            },
-                        },
-                    },
-                },
-            },
-        },
-    }
-
-    root:AddChild(overlay)
-end
+-- （关卡选择弹窗已移除，改为自动循环）
 
 -- ============================================================================
 -- Header
@@ -218,20 +67,16 @@ end
 function P.CreateSkillHeader()
     local IdleMode = require("IdleMode")
     local allDone, done, total = IdleMode.CheckAllGoalsDone()
-    local currentLevel = gameState.idleLevel
-    local maxUnlocked = gameState.idleMaxUnlockedLevel
+    local totalBalls = #Config.BALL_TYPES
+    local cycle = IdleMode.GetCycleCount()
+    local stageInCycle = ((gameState.idleLevel - 1) % totalBalls) + 1
 
-    local progressText
-    if currentLevel == maxUnlocked then
-        progressText = string.format("进度 %d/%d", done, total)
-    else
-        progressText = "已达标"
-    end
+    local progressText = string.format("进度 %d/%d", done, total)
+    local cycleMult = IdleMode.GetCycleMultiplier()
+    local cycleTag = cycle > 0 and string.format("  x%d", cycleMult) or ""
 
-    local progress = (total > 0) and (done / total) or 0
-    if currentLevel ~= maxUnlocked then progress = 1 end
-
-    local btnText = string.format("阶段 %d / %d  %s  ▼", currentLevel, maxUnlocked, progressText)
+    local btnText = string.format("阶段 %d / %d  %s%s",
+        stageInCycle, totalBalls, progressText, cycleTag)
 
     return UI.Panel {
         id = "idleSkillHeader",
@@ -246,8 +91,6 @@ function P.CreateSkillHeader()
                 backgroundFit = "sliced",
                 backgroundSlice = CARD_SLICE,
                 borderRadius = 8,
-                pointerEvents = "auto",
-                onClick = function() ShowLevelSelect() end,
                 flexDirection = "row",
                 alignItems = "center",
                 gap = 6,

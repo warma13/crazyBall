@@ -215,7 +215,6 @@ function P.CreateSettingsPanel(cb)
                         { 200, 80, 80, 200 },
                         function()
                             SaveSystem.Save()
-                            SaveSystem.Flush()
                             cb.HideSettingsPanel()
                             gameState.gamePhase = "menu"
                             gameState.roundPhase = "playing"

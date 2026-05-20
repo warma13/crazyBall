@@ -62,8 +62,8 @@ function P.CreateEnchantButton(cb)
     local ballIndex = gameState.selectedBallType
     local level = gameState.ballLevels[ballIndex]
     local isUnlocked = level > 0
-    local count = Enchantment.GetCount(ballIndex)
-    local totalLv = Enchantment.GetTotalLevel(ballIndex)
+    local count = Enchantment.GetCount()
+    local totalLv = Enchantment.GetTotalLevel()
 
     local label, bgColor, borderC
     if not isUnlocked then
@@ -499,8 +499,8 @@ function P.UpdateEnchantButton()
     local ballIndex = gameState.selectedBallType
     local level = gameState.ballLevels[ballIndex]
     local isUnlocked = level > 0
-    local count = Enchantment.GetCount(ballIndex)
-    local totalLv = Enchantment.GetTotalLevel(ballIndex)
+    local count = Enchantment.GetCount()
+    local totalLv = Enchantment.GetTotalLevel()
 
     local label, bgColor, borderC
     if not isUnlocked then

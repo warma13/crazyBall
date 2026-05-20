@@ -908,9 +908,9 @@ function M.SubscribeEvents()
         if gameState.activeTab == "balls" then
             EffectPanel.UpdateEnchantButton()
         end
-        -- 刷新球列表中对应球的附魔指示器
-        if gameState.activeTab == "balls" and data then
-            M.RefreshBallItem(data.ballIndex)
+        -- 刷新球列表中当前选中球的附魔指示器（附魔现在是全局的）
+        if gameState.activeTab == "balls" then
+            M.RefreshBallItem(gameState.selectedBallType)
         end
         -- 显示附魔结果弹窗
         if data then

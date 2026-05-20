@@ -174,7 +174,7 @@ function P.CreateBallButton(cb, index)
                     end
                     -- 显示附魔指示器
                     if isUnlocked then
-                        local enchants = Enchantment.GetAll(index)
+                        local enchants = Enchantment.GetAll()
                         local enchantIcons = {}
                         for _, cfg in ipairs(Config.ENCHANTMENTS) do
                             local lv = enchants[cfg.id]

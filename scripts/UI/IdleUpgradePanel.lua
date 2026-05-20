@@ -102,15 +102,7 @@ function P.CreateUpgradeHeader()
                 fontColor = { 255, 220, 60, 255 },
                 marginLeft = 2,
             },
-            -- 弹性间隔
             UI.Panel { flexGrow = 1 },
-            -- 右侧提示
-            UI.Label {
-                text = "永久升级",
-                fontSize = 8,
-                fontColor = { 140, 150, 180, 140 },
-                marginRight = 8,
-            },
         },
     }
 end
@@ -216,6 +208,7 @@ end
 ---@return table UI 面板
 function P.CreateUpgradeItem(cb, upgCfg, index)
     local level = GetLevel(upgCfg.id)
+    local rawLevel = level  -- 等级快照，用于防连点
     local isMaxed = level >= upgCfg.maxLevel
     local cost = Config.GetUpgradeCost(upgCfg, level)
     local canAfford = not isMaxed and gameState.idleCoins >= cost
@@ -260,6 +253,8 @@ function P.CreateUpgradeItem(cb, upgCfg, index)
         alignItems = "center", gap = 8,
         pointerEvents = "auto",
         onClick = function()
+            -- 防连点：如果等级已被其他点击升过，跳过
+            if GetLevel(upgCfg.id) ~= rawLevel then return end
             if isMaxed then return end
             cb.PlayClickSfx()
             cb.PurchaseUpgrade(upgCfg.id)
@@ -268,20 +263,10 @@ function P.CreateUpgradeItem(cb, upgCfg, index)
             -- 左侧图标
             UI.Panel {
                 width = 32, height = 32,
-                justifyContent = "center", alignItems = "center",
                 borderRadius = 7,
-                backgroundColor = { iconColor[1], iconColor[2], iconColor[3], 50 },
-                borderColor = { iconColor[1], iconColor[2], iconColor[3], 80 },
-                borderWidth = 1,
+                backgroundImage = upgCfg.iconImg,
+                backgroundFit = "cover",
                 pointerEvents = "none",
-                children = {
-                    UI.Label {
-                        text = string.sub(upgCfg.name, 1, 6),
-                        fontSize = 12,
-                        fontColor = { iconColor[1], iconColor[2], iconColor[3], 255 },
-                        textAlign = "center",
-                    },
-                },
             },
             -- 中部信息（名字 + 描述数值）
             UI.Panel {

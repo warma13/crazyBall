@@ -23,6 +23,7 @@ local math_ceil = math.ceil
 
 local Profiler = require("Profiler")
 local Runes = require("Runes")
+local SaveSystem = require("SaveSystem")
 
 local M = {}
 
@@ -145,6 +146,27 @@ local function DrawWatermark(vg, w, h)
     nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_BOTTOM)
     nvgFillColor(vg, nvgRGBA(180, 190, 210, 100))
     nvgText(vg, S(4), h - S(3), GAME_VERSION, nil)
+
+    -- 右下角：保存状态飘字
+    local saveStatus, saveAlpha = SaveSystem.GetSaveIndicator()
+    if saveStatus then
+        local label, r, g, b
+        if saveStatus == "saving" then
+            label = "保存中..."
+            r, g, b = 180, 200, 240
+        elseif saveStatus == "saved" then
+            label = "已保存"
+            r, g, b = 100, 220, 140
+        else  -- "failed"
+            label = "保存失败"
+            r, g, b = 240, 100, 100
+        end
+        local a = math_floor(saveAlpha * 180)
+        nvgFontSize(vg, S(10))
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_BOTTOM)
+        nvgFillColor(vg, nvgRGBA(r, g, b, a))
+        nvgText(vg, w - S(4), h - S(3), label, nil)
+    end
 end
 
 --- NanoVG 渲染主入口
@@ -190,6 +212,44 @@ function M.HandleNanoVGRender(eventType, eventData)
 
     if gameState.gamePhase == "runes" then
         M.DrawRuneScreen(vg, w, h)
+        DrawWatermark(vg, w, h)
+        nvgEndFrame(vg)
+        return
+    end
+
+    if gameState.gamePhase == "idle_loading" then
+        -- 加载中：带动画的提示
+        local time = GetTime():GetElapsedTime()
+        local cx, cy = w / 2, h / 2
+
+        -- 深色背景
+        nvgBeginPath(vg)
+        nvgRect(vg, 0, 0, w, h)
+        nvgFillColor(vg, nvgRGBA(15, 18, 30, 255))
+        nvgFill(vg)
+
+        -- 旋转加载圈
+        local radius = S(20)
+        local dotCount = 8
+        for i = 1, dotCount do
+            local angle = (i / dotCount) * math.pi * 2 + time * 3
+            local dx = cx + math.cos(angle) * radius
+            local dy = cy - S(30) + math.sin(angle) * radius
+            local alpha = math.floor(60 + 195 * (i / dotCount))
+            nvgBeginPath(vg)
+            nvgCircle(vg, dx, dy, S(3))
+            nvgFillColor(vg, nvgRGBA(120, 160, 255, alpha))
+            nvgFill(vg)
+        end
+
+        -- 文字
+        local dots = string.rep(".", math.floor(time * 2) % 4)
+        nvgFontFaceId(vg, State.fontNormal)
+        nvgFontSize(vg, S(18))
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBA(200, 210, 240, 200))
+        nvgText(vg, cx, cy + S(10), "加载存档中" .. dots, nil)
+
         DrawWatermark(vg, w, h)
         nvgEndFrame(vg)
         return
@@ -1115,6 +1175,7 @@ function M.DrawMenuScreen(vg, w, h)
 
     -- 按钮布局（参考图模式：大主按钮 + 下方并排小按钮）
     local isLoading = gameState.loading
+    local loadSrc = gameState.loadingSource or ""  -- "main"|"new"|"runes"|"idle"
     local hasSave = gameState.hasSave
 
     -- 布局尺寸
@@ -1153,7 +1214,8 @@ function M.DrawMenuScreen(vg, w, h)
 
     nvgFontSize(vg, S(24))
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-    if isLoading then
+    local bigIsLoading = isLoading and (loadSrc == "main" or loadSrc == "new")
+    if bigIsLoading then
         local dots = string.rep(".", math.floor(time * 2) % 4)
         nvgFillColor(vg, nvgRGBA(160, 170, 200, 200))
         nvgText(vg, w / 2, bigDrawY + bigBtnH / 2, "加载中" .. dots, nil)
@@ -1214,10 +1276,15 @@ function M.DrawMenuScreen(vg, w, h)
         nvgFillPaint(vg, nvgImagePattern(vg, rightX, runeDrawY, smallBtnW, smallBtnH, 0, imgBtnPurple, 1.0))
         nvgFill(vg)
     end
+    local runeIsLoading = isLoading and loadSrc == "runes"
     nvgFontSize(vg, S(18))
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-    nvgFillColor(vg, nvgRGBA(200, 160, 255, runeHover and 255 or 230))
-    if essenceCount > 0 then
+    if runeIsLoading then
+        local dots = string.rep(".", math.floor(time * 2) % 4)
+        nvgFillColor(vg, nvgRGBA(160, 140, 200, 200))
+        nvgText(vg, rightX + smallBtnW / 2, runeDrawY + smallBtnH / 2, "加载中" .. dots, nil)
+    elseif essenceCount > 0 then
+        nvgFillColor(vg, nvgRGBA(200, 160, 255, runeHover and 255 or 230))
         local midX = rightX + smallBtnW / 2
         local midY = runeDrawY + smallBtnH / 2
         local countStr = tostring(essenceCount)
@@ -1240,23 +1307,53 @@ function M.DrawMenuScreen(vg, w, h)
         nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
         nvgText(vg, icoX + icoSz + S(2), midY, countStr, nil)
     else
+        nvgFillColor(vg, nvgRGBA(200, 160, 255, runeHover and 255 or 230))
         nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
         nvgText(vg, rightX + smallBtnW / 2, runeDrawY + smallBtnH / 2, "符文", nil)
     end
     M.menuRuneRect = { x = rightX, y = row2Y, w = smallBtnW, h = smallBtnH }
 
-    -- ==== 第三行：放置模式（已隐藏） ====
-    M.menuIdleRect = { x = -100, y = -100, w = 0, h = 0 }
+    -- ==== 第三行：放置模式（居中，始终显示） ====
+    local row3Y = row2Y + smallBtnH + rowGap
+    do
+        local idleBtnW = smallBtnW * 2 + colGap   -- 与上方两按钮等宽
+        local idleBtnH = smallBtnH
+        local idleX = (w - idleBtnW) / 2
+        local idleEnabled = not isLoading
+        local idleHover = idleEnabled and isHover(idleX, row3Y, idleBtnW, idleBtnH)
+        local idleOffY = idleHover and -S(2) or 0
+        local idleDrawY = row3Y + idleOffY
+
+        if imgBtnGreen ~= 0 then
+            local alpha = idleEnabled and 1.0 or 0.4
+            nvgBeginPath(vg)
+            nvgRect(vg, idleX, idleDrawY, idleBtnW, idleBtnH)
+            nvgFillPaint(vg, nvgImagePattern(vg, idleX, idleDrawY, idleBtnW, idleBtnH, 0, imgBtnGreen, alpha))
+            nvgFill(vg)
+        end
+        nvgFontSize(vg, S(18))
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBA(180, 255, 180, idleEnabled and (idleHover and 255 or 230) or 100))
+        nvgText(vg, idleX + idleBtnW / 2, idleDrawY + idleBtnH / 2, "放置模式", nil)
+
+        if idleEnabled then
+            M.menuIdleRect = { x = idleX, y = row3Y, w = idleBtnW, h = idleBtnH }
+        else
+            M.menuIdleRect = { x = -100, y = -100, w = 0, h = 0 }
+        end
+    end
 
     if not hasSave then
         M.menuContinueRect = { x = -100, y = -100, w = 0, h = 0 }
     end
 
     -- ==== hover 进入检测 & 音效 ====
+    local idleHoverCheck = not isLoading and isHover((w - (smallBtnW * 2 + colGap)) / 2, row3Y, smallBtnW * 2 + colGap, smallBtnH)
     local curHover = nil
     if bigHover then curHover = "big"
     elseif hasSave and isHover(leftX, row2Y, smallBtnW, smallBtnH) then curHover = "new"
     elseif runeHover then curHover = "rune"
+    elseif idleHoverCheck then curHover = "idle"
     end
     if curHover and curHover ~= prevHoverBtn then
         PlayUISound(State.sfxButtonHover, 0.6)
@@ -1499,6 +1596,23 @@ function M.DrawMenuScreen(vg, w, h)
         M.announceCloseRect = { x = closeBtnX2, y = closeBtnY2, w = closeBtnW2, h = closeBtnH2 }
     else
         M.announceCloseRect = nil
+    end
+
+    -- 云加载失败提示（顶部横幅）
+    if gameState.cloudLoadFailed then
+        local bannerH = S(36)
+        local bannerY = S(8)
+        -- 半透明红色背景
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, S(16), bannerY, w - S(32), bannerH, S(8))
+        nvgFillColor(vg, nvgRGBA(180, 40, 40, 200))
+        nvgFill(vg)
+        -- 提示文字
+        nvgFontFaceId(vg, fontNormal)
+        nvgFontSize(vg, S(13))
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBA(255, 220, 220, 255))
+        nvgText(vg, w / 2, bannerY + bannerH / 2, "网络异常，存档加载失败，请检查网络后重试", nil)
     end
 end
 

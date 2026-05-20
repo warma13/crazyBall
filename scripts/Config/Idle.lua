@@ -39,6 +39,7 @@ M.IDLE = {
         -- ═══════════════════════════════════════════════
         {
             id          = "drop_cooldown",
+            iconImg     = "image/upg_drop_cooldown_20260520073220.png",
             name        = "掉落加速",
             desc        = "缩短弹珠投放间隔",
             unlockLevel = 1,
@@ -55,6 +56,7 @@ M.IDLE = {
         },
         {
             id          = "base_value",
+            iconImg     = "image/upg_base_value_20260520073228.png",
             name        = "基础价值",
             desc        = "提高每颗弹珠的基础收益",
             unlockLevel = 2,
@@ -68,6 +70,7 @@ M.IDLE = {
         },
         {
             id          = "peg_gold",
+            iconImg     = "image/upg_peg_gold_20260520072010.png",
             name        = "撞钉奖励",
             desc        = "弹珠每次撞到钉子获得金币",
             unlockLevel = 3,
@@ -89,6 +92,7 @@ M.IDLE = {
         -- ═══════════════════════════════════════════════
         {
             id          = "coin_magnet",
+            iconImg     = "image/upg_coin_magnet_20260520073215.png",
             name        = "金币磁铁",
             desc        = "提高落袋时的金币收益",
             unlockLevel = 4,
@@ -103,6 +107,7 @@ M.IDLE = {
 
         {
             id          = "crit_chance",
+            iconImg     = "image/upg_crit_chance_20260520073216.png",
             name        = "暴击概率",
             desc        = "落袋时触发暴击的概率",
             unlockLevel = 5,
@@ -120,6 +125,7 @@ M.IDLE = {
         -- ═══════════════════════════════════════════════
         {
             id          = "slot_base",
+            iconImg     = "image/upg_slot_base_20260520072127.png",
             name        = "底袋强化",
             desc        = "提高新关卡底袋的初始等级",
             unlockLevel = 6,
@@ -133,6 +139,7 @@ M.IDLE = {
         },
         {
             id          = "multi_drop",
+            iconImg     = "image/upg_multi_drop_20260520073218.png",
             name        = "多重投放",
             desc        = "每次投放有概率额外掉一颗球",
             unlockLevel = 7,
@@ -146,6 +153,7 @@ M.IDLE = {
         },
         {
             id          = "crit_mult",
+            iconImg     = "image/upg_crit_mult_20260520073214.png",
             name        = "暴击倍率",
             desc        = "暴击时的收益倍数",
             unlockLevel = 8,
@@ -163,6 +171,7 @@ M.IDLE = {
         -- ═══════════════════════════════════════════════
         {
             id          = "extra_ball",
+            iconImg     = "image/upg_extra_ball_20260520073220.png",
             name        = "额外弹珠",
             desc        = "每次投放同时多掉额外弹珠",
             unlockLevel = 9,
@@ -176,6 +185,7 @@ M.IDLE = {
         },
         {
             id          = "sky_drop",
+            iconImg     = "image/upg_sky_drop_20260520073214.png",
             name        = "天降弹珠",
             desc        = "自动从天上掉落免费弹珠",
             unlockLevel = 10,
@@ -193,6 +203,7 @@ M.IDLE = {
         },
         {
             id          = "heavy_landing",
+            iconImg     = "image/upg_heavy_landing_20260520073529.png",
             name        = "重力落袋",
             desc        = "落袋收益额外提升一个倍率",
             unlockLevel = 11,
@@ -206,6 +217,7 @@ M.IDLE = {
         },
         {
             id          = "combo_storm",
+            iconImg     = "image/upg_combo_storm_20260520073526.png",
             name        = "连击风暴",
             desc        = "短时间内连续落袋获得递增加成",
             unlockLevel = 13,
@@ -224,6 +236,7 @@ M.IDLE = {
         -- ═══════════════════════════════════════════════
         {
             id          = "slot_fortune",
+            iconImg     = "image/upg_slot_fortune_20260520073527.png",
             name        = "口袋祝福",
             desc        = "落袋有概率触发收益翻倍",
             unlockLevel = 16,
@@ -242,6 +255,7 @@ M.IDLE = {
         },
         {
             id          = "prestige_boost",
+            iconImg     = "image/upg_prestige_boost_20260520073529.png",
             name        = "转生加成",
             desc        = "提高每次转生的倍率加成",
             unlockLevel = 19,
@@ -255,6 +269,7 @@ M.IDLE = {
         },
         {
             id          = "earning_amp",
+            iconImg     = "image/upg_earning_amp_20260520073529.png",
             name        = "收益放大",
             desc        = "所有收益的最终乘数加成",
             unlockLevel = 21,
@@ -282,17 +297,17 @@ M.IDLE.SKILLS = {
         icon          = "雨",
         iconImage     = "image/skill_mass_drop_20260519070609.png",
         iconColor     = { 120, 200, 255 },
-        maxLevel      = 5,
+        maxLevel      = 999,
         skillType     = "instant",
         cooldown      = 25.0,        -- 基础CD
-        cdPerLevel    = 2.0,         -- 每级减少CD
+        cdDiminishK   = 0.15,        -- CD渐进衰减系数
         minCooldown   = 10.0,
         baseBallCount = 10,
-        ballCountPerLv = 5,
+        ballCountPerLv = 5,          -- 球数线性增长
         formatValue   = function(lv, cfg)
-            local cd = math.max(cfg.minCooldown, cfg.cooldown - (lv - 1) * cfg.cdPerLevel)
+            local cd = cfg.minCooldown + (cfg.cooldown - cfg.minCooldown) / (1 + cfg.cdDiminishK * (lv - 1))
             local count = cfg.baseBallCount + (lv - 1) * cfg.ballCountPerLv
-            return string.format("掉%d球 CD%.0fs", count, cd)
+            return string.format("掉%d球 CD%.1fs", count, cd)
         end,
     },
     {
@@ -302,17 +317,17 @@ M.IDLE.SKILLS = {
         icon          = "珠",
         iconImage     = "image/skill_ball_rain_20260519070604.png",
         iconColor     = { 80, 160, 255 },
-        maxLevel      = 5,
+        maxLevel      = 999,
         skillType     = "instant",
         cooldown      = 20.0,
-        cdPerLevel    = 2.0,
+        cdDiminishK   = 0.15,
         minCooldown   = 8.0,
         baseBallCount = 5,
-        ballCountPerLv = 3,
+        ballCountPerLv = 3,          -- 球数线性增长
         formatValue   = function(lv, cfg)
-            local cd = math.max(cfg.minCooldown, cfg.cooldown - (lv - 1) * cfg.cdPerLevel)
+            local cd = cfg.minCooldown + (cfg.cooldown - cfg.minCooldown) / (1 + cfg.cdDiminishK * (lv - 1))
             local count = cfg.baseBallCount + (lv - 1) * cfg.ballCountPerLv
-            return string.format("掉%d球 CD%.0fs", count, cd)
+            return string.format("掉%d球 CD%.1fs", count, cd)
         end,
     },
     -- ─── instant 特效类：触发时产生壮观的视觉效果 ───
@@ -323,20 +338,20 @@ M.IDLE.SKILLS = {
         icon          = "巨",
         iconImage     = "image/skill_giant_ball_20260519070559.png",
         iconColor     = { 255, 180, 50 },
-        maxLevel      = 5,
+        maxLevel      = 999,
         skillType     = "instant",
         cooldown      = 30.0,
-        cdPerLevel    = 2.5,
+        cdDiminishK   = 0.12,
         minCooldown   = 12.0,
         baseSize      = 3.0,       -- 基础大小倍率
-        sizePerLv     = 0.5,       -- 每级增加倍率
+        sizePerLv     = 0.5,       -- 每级增加大小（线性）
         baseValueMult = 5,         -- 基础价值倍率
-        valueMultPerLv = 2,        -- 每级价值倍率增加
+        valueGrowth   = 1.12,      -- 价值指数增长底数
         formatValue   = function(lv, cfg)
-            local cd = math.max(cfg.minCooldown, cfg.cooldown - (lv - 1) * cfg.cdPerLevel)
+            local cd = cfg.minCooldown + (cfg.cooldown - cfg.minCooldown) / (1 + cfg.cdDiminishK * (lv - 1))
             local size = cfg.baseSize + (lv - 1) * cfg.sizePerLv
-            local valM = cfg.baseValueMult + (lv - 1) * cfg.valueMultPerLv
-            return string.format("%.0fx大 %dx价值 CD%.0fs", size, valM, cd)
+            local valM = cfg.baseValueMult * cfg.valueGrowth ^ (lv - 1)
+            return string.format("%.0fx大 %.0fx价值 CD%.1fs", size, valM, cd)
         end,
     },
     {
@@ -346,19 +361,19 @@ M.IDLE.SKILLS = {
         icon          = "焰",
         iconImage     = "image/skill_firework_20260519070559.png",
         iconColor     = { 255, 100, 60 },
-        maxLevel      = 5,
+        maxLevel      = 999,
         skillType     = "instant",
         cooldown      = 28.0,
-        cdPerLevel    = 2.0,
+        cdDiminishK   = 0.12,
         minCooldown   = 12.0,
-        baseWaves     = 2,          -- 基础波数
-        wavesPerLv    = 1,          -- 每级增加波数
+        baseWaves     = 2,          -- 基础波数（线性增长）
+        wavesPerLv    = 1,
         ballsPerWave  = 6,          -- 每波球数
         formatValue   = function(lv, cfg)
-            local cd = math.max(cfg.minCooldown, cfg.cooldown - (lv - 1) * cfg.cdPerLevel)
+            local cd = cfg.minCooldown + (cfg.cooldown - cfg.minCooldown) / (1 + cfg.cdDiminishK * (lv - 1))
             local waves = cfg.baseWaves + (lv - 1) * cfg.wavesPerLv
             local total = waves * cfg.ballsPerWave
-            return string.format("%d波%d球 CD%.0fs", waves, total, cd)
+            return string.format("%d波%d球 CD%.1fs", waves, total, cd)
         end,
     },
     {
@@ -368,20 +383,20 @@ M.IDLE.SKILLS = {
         icon          = "金",
         iconImage     = "image/skill_golden_rain_20260519070559.png",
         iconColor     = { 255, 220, 60 },
-        maxLevel      = 5,
+        maxLevel      = 999,
         skillType     = "instant",
         cooldown      = 32.0,
-        cdPerLevel    = 2.5,
+        cdDiminishK   = 0.12,
         minCooldown   = 14.0,
         baseBallCount = 8,
-        ballCountPerLv = 3,
-        baseValueMult = 3,         -- 金色球价值倍率
-        valueMultPerLv = 1,
+        ballCountPerLv = 3,          -- 球数线性增长
+        baseValueMult = 3,          -- 基础价值倍率
+        valueGrowth   = 1.12,       -- 价值指数增长底数
         formatValue   = function(lv, cfg)
-            local cd = math.max(cfg.minCooldown, cfg.cooldown - (lv - 1) * cfg.cdPerLevel)
+            local cd = cfg.minCooldown + (cfg.cooldown - cfg.minCooldown) / (1 + cfg.cdDiminishK * (lv - 1))
             local count = cfg.baseBallCount + (lv - 1) * cfg.ballCountPerLv
-            local valM = cfg.baseValueMult + (lv - 1) * cfg.valueMultPerLv
-            return string.format("%d金球 %dx价值 CD%.0fs", count, valM, cd)
+            local valM = cfg.baseValueMult * cfg.valueGrowth ^ (lv - 1)
+            return string.format("%d金球 %.0fx价值 CD%.1fs", count, valM, cd)
         end,
     },
     {
@@ -391,17 +406,17 @@ M.IDLE.SKILLS = {
         icon          = "爆",
         iconImage     = "image/skill_peg_explode_20260519070611.png",
         iconColor     = { 255, 60, 60 },
-        maxLevel      = 5,
+        maxLevel      = 999,
         skillType     = "instant",
         cooldown      = 35.0,
-        cdPerLevel    = 3.0,
+        cdDiminishK   = 0.10,
         minCooldown   = 15.0,
         baseGoldPerPeg = 5,         -- 每钉基础金币
-        goldPerPegPerLv = 3,        -- 每级每钉增加
+        goldGrowth     = 1.15,      -- 每钉金币指数增长底数
         formatValue   = function(lv, cfg)
-            local cd = math.max(cfg.minCooldown, cfg.cooldown - (lv - 1) * cfg.cdPerLevel)
-            local gold = cfg.baseGoldPerPeg + (lv - 1) * cfg.goldPerPegPerLv
-            return string.format("每钉%d金 CD%.0fs", gold, cd)
+            local cd = cfg.minCooldown + (cfg.cooldown - cfg.minCooldown) / (1 + cfg.cdDiminishK * (lv - 1))
+            local gold = cfg.baseGoldPerPeg * cfg.goldGrowth ^ (lv - 1)
+            return string.format("每钉%.0f金 CD%.1fs", gold, cd)
         end,
     },
     {
@@ -411,21 +426,21 @@ M.IDLE.SKILLS = {
         icon          = "裂",
         iconImage     = "image/skill_split_storm_20260519070559.png",
         iconColor     = { 100, 200, 255 },
-        maxLevel      = 5,
+        maxLevel      = 999,
         skillType     = "duration",
         cooldown      = 25.0,
-        cdPerLevel    = 2.0,
+        cdDiminishK   = 0.15,
         minCooldown   = 10.0,
-        baseDuration  = 6.0,       -- 基础持续时间（秒）
-        durationPerLv = 1.5,       -- 每级增加持续时间
+        baseDuration  = 6.0,       -- 基础持续时间（线性增长）
+        durationPerLv = 1.5,
         splitInterval = 2.0,       -- 每隔多少秒分裂一波
-        baseSplitCount = 2,        -- 每球分裂出几颗
-        splitPerLv    = 1,         -- 每级增加分裂数
+        baseSplitCount = 2,        -- 每球分裂出几颗（线性增长）
+        splitPerLv    = 1,
         formatValue   = function(lv, cfg)
-            local cd = math.max(cfg.minCooldown, cfg.cooldown - (lv - 1) * cfg.cdPerLevel)
+            local cd = cfg.minCooldown + (cfg.cooldown - cfg.minCooldown) / (1 + cfg.cdDiminishK * (lv - 1))
             local dur = cfg.baseDuration + (lv - 1) * cfg.durationPerLv
             local splits = cfg.baseSplitCount + (lv - 1) * cfg.splitPerLv
-            return string.format("持续%.0fs 每球裂%d颗 CD%.0fs", dur, splits, cd)
+            return string.format("持续%.0fs 每球裂%d颗 CD%.1fs", dur, splits, cd)
         end,
     },
     {
@@ -435,17 +450,17 @@ M.IDLE.SKILLS = {
         icon          = "奖",
         iconImage     = "image/skill_slot_party_20260519070558.png",
         iconColor     = { 255, 200, 100 },
-        maxLevel      = 5,
+        maxLevel      = 999,
         skillType     = "instant",
         cooldown      = 35.0,
-        cdPerLevel    = 3.0,
+        cdDiminishK   = 0.10,
         minCooldown   = 15.0,
         baseMultPerSlot = 10,      -- 每个底袋基础倍率
-        multPerSlotPerLv = 5,      -- 每级每底袋增加倍率
+        multGrowth      = 1.15,    -- 底袋倍率指数增长底数
         formatValue   = function(lv, cfg)
-            local cd = math.max(cfg.minCooldown, cfg.cooldown - (lv - 1) * cfg.cdPerLevel)
-            local m = cfg.baseMultPerSlot + (lv - 1) * cfg.multPerSlotPerLv
-            return string.format("每袋%dx奖 CD%.0fs", m, cd)
+            local cd = cfg.minCooldown + (cfg.cooldown - cfg.minCooldown) / (1 + cfg.cdDiminishK * (lv - 1))
+            local m = cfg.baseMultPerSlot * cfg.multGrowth ^ (lv - 1)
+            return string.format("每袋%.0fx奖 CD%.1fs", m, cd)
         end,
     },
 }
@@ -1171,6 +1186,165 @@ M.BALL_UPGRADES_BY_TYPE = {
         },
     },
 }
+
+-- ================================================================
+-- 转生能力系统（星尘消费，转生后永久生效）
+-- ================================================================
+-- 星尘获取公式: floor(log10(totalEarned / threshold) * (1 + prestigeCount * 0.25)) + 1 + floor(prestigeCount / 3)
+-- 费用公式: ceil(baseCost * costGrowth ^ level)
+-- tier 解锁: T1 免费, T2 需任一 T1 >= 3, T3 需任一 T2 >= 3
+M.IDLE.PRESTIGE_ABILITIES = {
+    -- ═══════════════════════════════════════
+    -- T1 · 基础 (baseCost 1, 无需前置)
+    -- ═══════════════════════════════════════
+    {
+        id          = "starlight_savings",
+        name        = "星光积蓄",
+        desc        = "转生后获得初始金币",
+        tier        = 1,
+        baseCost    = 1,
+        costGrowth  = 1.25,
+        perLevel    = 500,  -- 每级 +500 × 转生次数 初始金币
+        icon        = "💰",
+        iconImg     = "image/prestige_starlight_savings_20260520064358.png",
+        iconColor   = { 255, 220, 80 },
+    },
+    {
+        id          = "ball_mastery",
+        name        = "弹珠精通",
+        desc        = "所有弹珠有效等级 +1",
+        tier        = 1,
+        baseCost    = 1,
+        costGrowth  = 1.30,
+        perLevel    = 1,
+        icon        = "🔮",
+        iconImg     = "image/prestige_ball_mastery_20260520064245.png",
+        iconColor   = { 100, 200, 255 },
+    },
+    {
+        id          = "skill_ember",
+        name        = "技能余烬",
+        desc        = "所有技能 CD -4%",
+        tier        = 1,
+        maxLevel    = 10,
+        baseCost    = 1,
+        costGrowth  = 1.25,
+        perLevel    = 0.04,  -- 每级 -4% CD
+        icon        = "🔥",
+        iconImg     = "image/prestige_skill_ember_20260520064242.png",
+        iconColor   = { 255, 120, 60 },
+    },
+    -- ═══════════════════════════════════════
+    -- T2 · 进阶 (baseCost 3-4, 需任一 T1 >= Lv.3)
+    -- ═══════════════════════════════════════
+    {
+        id          = "nebula_multiply",
+        name        = "星云倍增",
+        desc        = "最终收益 +8%",
+        tier        = 2,
+        baseCost    = 3,
+        costGrowth  = 1.35,
+        perLevel    = 0.08,
+        icon        = "🌌",
+        iconImg     = "image/prestige_nebula_multiply_20260520064248.png",
+        iconColor   = { 160, 120, 255 },
+    },
+    {
+        id          = "split_resonance",
+        name        = "分裂共鸣",
+        desc        = "分裂球 +1 / 风暴分裂 +2",
+        tier        = 2,
+        baseCost    = 4,
+        costGrowth  = 1.40,
+        perLevel    = 1,  -- 分裂+1, 风暴+2
+        icon        = "💎",
+        iconImg     = "image/prestige_split_resonance_20260520064244.png",
+        iconColor   = { 80, 200, 255 },
+    },
+    {
+        id          = "crit_star",
+        name        = "暴击星辰",
+        desc        = "暴击率 +2% / 暴击倍率 +0.15x",
+        tier        = 2,
+        baseCost    = 3,
+        costGrowth  = 1.35,
+        perLevel    = 1,  -- +2% 暴击率, +0.15x 倍率
+        icon        = "⭐",
+        iconImg     = "image/prestige_crit_star_20260520064534.png",
+        iconColor   = { 255, 200, 50 },
+    },
+    {
+        id          = "combo_resonance",
+        name        = "连击共鸣",
+        desc        = "连击窗口 +0.4s / 连击加成 +5%",
+        tier        = 2,
+        baseCost    = 3,
+        costGrowth  = 1.35,
+        perLevel    = 1,  -- +0.4s 窗口, +5% 加成
+        icon        = "⚡",
+        iconImg     = "image/prestige_combo_resonance_20260520064606.png",
+        iconColor   = { 255, 160, 60 },
+    },
+    -- ═══════════════════════════════════════
+    -- T3 · 终极 (baseCost 8-10, 需任一 T2 >= Lv.3)
+    -- ═══════════════════════════════════════
+    {
+        id          = "skill_overload",
+        name        = "技能超载",
+        desc        = "所有技能效果 +10%",
+        tier        = 3,
+        baseCost    = 8,
+        costGrowth  = 1.40,
+        perLevel    = 0.10,
+        icon        = "🌀",
+        iconImg     = "image/prestige_skill_overload_20260520064604.png",
+        iconColor   = { 100, 255, 200 },
+    },
+    {
+        id          = "supernova",
+        name        = "超新星",
+        desc        = "星尘获取量 +15%",
+        tier        = 3,
+        baseCost    = 10,
+        costGrowth  = 1.45,
+        perLevel    = 0.15,
+        icon        = "🌟",
+        iconImg     = "image/prestige_supernova_20260520064355.png",
+        iconColor   = { 255, 255, 100 },
+    },
+    {
+        id          = "void_force",
+        name        = "虚空之力",
+        desc        = "转生门槛降低 4%",
+        tier        = 3,
+        maxLevel    = 8,
+        baseCost    = 8,
+        costGrowth  = 1.40,
+        perLevel    = 0.04,  -- 每级 -4% 门槛
+        icon        = "🕳️",
+        iconImg     = "image/prestige_void_force_20260520064515.png",
+        iconColor   = { 180, 80, 255 },
+    },
+}
+
+--- 获取转生能力费用（星尘）
+---@param abilityCfg table
+---@param currentLevel number
+---@return number
+function M.GetPrestigeAbilityCost(abilityCfg, currentLevel)
+    if abilityCfg.maxLevel and currentLevel >= abilityCfg.maxLevel then return math.huge end
+    return math.ceil(abilityCfg.baseCost * (abilityCfg.costGrowth ^ currentLevel))
+end
+
+--- 获取转生能力配置
+---@param abilityId string
+---@return table|nil
+function M.GetPrestigeAbilityConfig(abilityId)
+    for _, cfg in ipairs(M.IDLE.PRESTIGE_ABILITIES) do
+        if cfg.id == abilityId then return cfg end
+    end
+    return nil
+end
 
 --- 根据球效果ID获取该球的升级列表
 ---@param effectId string 球的 effect.id（如 "sturdy", "bouncy" 等）

@@ -47,5 +47,7 @@ M.BALL_UPGRADES         = Idle.BALL_UPGRADES           -- 兼容旧接口（默�
 M.BALL_UPGRADES_BY_TYPE = Idle.BALL_UPGRADES_BY_TYPE   -- 按球类型索引
 M.GetBallUpgradesForType = Idle.GetBallUpgradesForType  -- 获取指定球类型升级列表
 M.GetUpgradeCost        = Idle.GetUpgradeCost
+M.GetPrestigeAbilityCost   = Idle.GetPrestigeAbilityCost
+M.GetPrestigeAbilityConfig = Idle.GetPrestigeAbilityConfig
 
 return M

@@ -235,7 +235,6 @@ local function _rebuildActiveHandlers()
     if Upgrades.GetEffectLevel("peg_mark") > 0 then add(M._applyPegMark) end
     if Upgrades.GetEffectLevel("peg_sync") > 0 then add(M._applyPegSync) end
     if Upgrades.GetEffectLevel("peg_gem") > 0 then add(M._applyPegGem) end
-    add(M._applyEnchantGemChance)  -- 附魔宝石概率（按球检查，总是添加）
     if Upgrades.GetEffectLevel("echo_hit") > 0 then add(M._applyEchoHit) end
     if Upgrades.GetEffectLevel("peg_spark") > 0 then add(M._applyPegSpark, true) end
 
@@ -596,14 +595,6 @@ end
 
 function M._applyPegGem(ctx)
     local val = Upgrades.GetEffectValue("peg_gem")
-    if val > 0 and math_random() < val then
-        State.AddGems(1)
-    end
-end
-
---- 附魔：撞钉产宝石概率（gem_chance，加算，每级+1%）
-function M._applyEnchantGemChance(ctx)
-    local val = Enchantment.GetValue(ctx.ball.typeIndex, "gem_chance")
     if val > 0 and math_random() < val then
         State.AddGems(1)
     end

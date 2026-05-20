@@ -1,8 +1,8 @@
 -- ============================================================================
 -- Enchantment.lua - 附魔系统核心模块
--- 附魔可叠加（同球多种附魔），重复抽到同一附魔则升级。
+-- 附魔全局生效（不绑定具体球），重复抽到同一附魔则升级。
 -- 每次附魔需观看一次广告，随机从附魔池中获得一个。
--- 本局有效，新游戏重置。
+-- 转生时重置。
 -- ============================================================================
 
 local Config = require("Config")
@@ -21,29 +21,25 @@ local M = {}
 -- 查询接口
 -- ============================================================================
 
---- 获取指定球的全部附魔 { [enchantId] = level }（不存在则返回空表）
----@param ballIndex number
+--- 获取全部附魔 { [enchantId] = level }（不存在则返回空表）
 ---@return table
-function M.GetAll(ballIndex)
-    return gameState.ballEnchantments[ballIndex] or {}
+function M.GetAll()
+    return gameState.idleEnchantments or {}
 end
 
---- 获取指定球的某附魔等级（0 = 未拥有）
----@param ballIndex number
+--- 获取某附魔等级（0 = 未拥有）
 ---@param enchantId string
 ---@return number
-function M.GetLevel(ballIndex, enchantId)
-    local map = gameState.ballEnchantments[ballIndex]
-    return map and map[enchantId] or 0
+function M.GetLevel(enchantId)
+    return (gameState.idleEnchantments or {})[enchantId] or 0
 end
 
---- 获取指定球的某附魔实际数值
+--- 获取某附魔实际数值
 --- add: baseValue * level, mul: 1 - (1 - baseValue)^level
----@param ballIndex number
 ---@param enchantId string
 ---@return number
-function M.GetValue(ballIndex, enchantId)
-    local level = M.GetLevel(ballIndex, enchantId)
+function M.GetValue(enchantId)
+    local level = M.GetLevel(enchantId)
     if level <= 0 then return 0 end
     local cfg = Config.GetEnchantConfig(enchantId)
     if not cfg then return 0 end
@@ -54,22 +50,20 @@ function M.GetValue(ballIndex, enchantId)
     end
 end
 
---- 获取指定球的附魔总条数
----@param ballIndex number
+--- 获取附魔总条数
 ---@return number
-function M.GetCount(ballIndex)
-    local map = gameState.ballEnchantments[ballIndex]
+function M.GetCount()
+    local map = gameState.idleEnchantments
     if not map then return 0 end
     local n = 0
     for _ in pairs(map) do n = n + 1 end
     return n
 end
 
---- 获取指定球的附魔总等级数（所有附魔等级之和）
----@param ballIndex number
+--- 获取附魔总等级数（所有附魔等级之和）
 ---@return number
-function M.GetTotalLevel(ballIndex)
-    local map = gameState.ballEnchantments[ballIndex]
+function M.GetTotalLevel()
+    local map = gameState.idleEnchantments
     if not map then return 0 end
     local total = 0
     for _, lv in pairs(map) do total = total + lv end
@@ -80,12 +74,8 @@ end
 -- 广告附魔
 -- ============================================================================
 
---- 通过广告为当前选中球附魔（异步回调）
+--- 通过广告附魔（异步回调）
 function M.AdEnchant()
-    local ballIndex = gameState.selectedBallType
-    local level = gameState.ballLevels[ballIndex]
-    if level == 0 then return end  -- 未解锁的球不能附魔
-
     AdHelper.ShowRewardAd(function(result)
         if result.success then
             -- 随机选一种附魔
@@ -93,10 +83,10 @@ function M.AdEnchant()
             local chosen = pool[math.random(1, #pool)]
 
             -- 确保 map 存在
-            if not gameState.ballEnchantments[ballIndex] then
-                gameState.ballEnchantments[ballIndex] = {}
+            if not gameState.idleEnchantments then
+                gameState.idleEnchantments = {}
             end
-            local map = gameState.ballEnchantments[ballIndex]
+            local map = gameState.idleEnchantments
 
             -- 已有则升级，否则新增
             local oldLevel = map[chosen.id] or 0
@@ -104,14 +94,12 @@ function M.AdEnchant()
             local isUpgrade = oldLevel > 0
 
             EventBus.emit("enchant_changed", {
-                ballIndex = ballIndex,
                 enchant = chosen,
                 newLevel = oldLevel + 1,
                 isUpgrade = isUpgrade,
             })
-            -- 附魔后立刻保存，防止丢失
+            -- 附魔后保存（30s 节流写入云端）
             SaveSystem.Save()
-            SaveSystem.Flush()
         end
     end)
 end
